@@ -285,7 +285,7 @@
     }
 
     function setStatus(message, statusType) {
-        const { status } = getUiElements();
+        const { root, status } = getUiElements();
 
         if (!status) {
             return;
@@ -293,6 +293,10 @@
 
         status.textContent = message;
         status.dataset.state = statusType;
+
+        if (root) {
+            root.dataset.state = statusType;
+        }
     }
 
     function setButtonState(label, disabled) {
@@ -358,21 +362,18 @@
         }
 
         const container = document.createElement('div');
-        const actionTarget = document.querySelector('.content-action .action-btn');
 
         container.id = UI_ID;
-        container.className = 'k12ext-toolbar';
+        container.className = 'k12ext-floating-panel';
+        container.dataset.state = 'idle';
         container.innerHTML = [
-            `<button type="button" id="${BUTTON_ID}" class="btn btn-default margin-left-xs k12ext-button">Chạy tiến trình</button>`,
+            '<div class="k12ext-heading">K12 Video Runner</div>',
+            '<div class="k12ext-subheading">Nút luôn hiển thị để gửi tiến trình video.</div>',
+            `<button type="button" id="${BUTTON_ID}" class="k12ext-button">Chạy tiến trình</button>`,
             `<div id="${STATUS_ID}" class="k12ext-status" data-state="idle">Sẵn sàng gửi yêu cầu hoàn tất video.</div>`
         ].join('');
 
-        if (actionTarget) {
-            actionTarget.appendChild(container);
-        } else {
-            container.classList.add('k12ext-floating');
-            document.body.appendChild(container);
-        }
+        document.body.appendChild(container);
 
         attachHandlers(container);
     }

@@ -1,0 +1,89 @@
+name: Release Chrome Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Git tag for the release, for example v1.0.0
+        required: true
+        default: v1.0.0
+      release_name:
+        description: Optional title for the GitHub Release
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  package-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG_NAME="${{ github.event.inputs.tag_name }}"
+            RELEASE_NAME="${{ github.event.inputs.release_name }}"
+          else
+            TAG_NAME="${GITHUB_REF_NAME}"
+            RELEASE_NAME=""
+          fi
+
+          if [[ -z "$RELEASE_NAME" ]]; then
+            RELEASE_NAME="K12 Video Runner ${TAG_NAME}"
+          fi
+
+          VERSION="${TAG_NAME#v}"
+          ASSET_NAME="k12-video-runner-${VERSION}.zip"
+          PACKAGE_ROOT="dist/k12-video-runner"
+
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "release_name=$RELEASE_NAME" >> "$GITHUB_OUTPUT"
+          echo "asset_name=$ASSET_NAME" >> "$GITHUB_OUTPUT"
+          echo "package_root=$PACKAGE_ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Build release zip
+        shell: bash
+        run: |
+          rm -rf dist
+          mkdir -p "${{ steps.meta.outputs.package_root }}"
+          cp -R chrome-extension/. "${{ steps.meta.outputs.package_root }}"
+          cd dist
+          zip -r "../${{ steps.meta.outputs.asset_name }}" "k12-video-runner"
+
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.asset_name }}
+          path: ${{ github.workspace }}/${{ steps.meta.outputs.asset_name }}
+          if-no-files-found: error
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: ${{ steps.meta.outputs.release_name }}
+          target_commitish: ${{ github.sha }}
+          files: ${{ github.workspace }}/${{ steps.meta.outputs.asset_name }}
+          overwrite_files: true
+          body: |
+            ## Cai dat
+
+            1. Tai file zip trong phan Assets cua release.
+            2. Giai nen file zip.
+            3. Mo `chrome://extensions` tren Chrome.
+            4. Bat `Developer mode`.
+            5. Bam `Load unpacked` va chon thu muc `k12-video-runner` vua giai nen.
+
+            ## Noi dung goi
+
+            Ban release nay chua san extension dang unpacked de nap truc tiep vao Chrome sau khi giai nen.

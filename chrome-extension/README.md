@@ -2,6 +2,36 @@
 
 Chrome extension này hiển thị nút `Chạy tiến trình` trên trang video của `https://hcm.k12online.vn/*`.
 
+## Tải bản đóng gói sẵn từ GitHub Release
+
+Repo đã có workflow tự động đóng gói extension thành file zip để người dùng tải về nhanh.
+
+### Với người dùng cuối
+
+1. Mở trang `Releases` của repo trên GitHub.
+2. Tải file asset dạng `k12-video-runner-x.y.z.zip` trong phần `Assets`.
+3. Giải nén file zip.
+4. Vào `chrome://extensions`.
+5. Bật `Developer mode`.
+6. Bấm `Load unpacked`.
+7. Chọn thư mục `k12-video-runner` vừa giải nén.
+
+Lưu ý: Chrome không nạp trực tiếp file zip. Cần giải nén trước rồi mới `Load unpacked` thư mục bên trong.
+
+### Với người phát hành
+
+Workflow release nằm ở `.github/workflows/release-extension.yml` và hỗ trợ 2 cách:
+
+1. Tạo tag dạng `v1.0.0` rồi push lên GitHub để workflow tự tạo release.
+2. Vào tab `Actions` trên GitHub, chạy thủ công workflow `Release Chrome Extension` và nhập `tag_name`.
+
+Mỗi lần chạy thành công, workflow sẽ:
+
+- đóng gói toàn bộ thư mục `chrome-extension`
+- tạo file zip có thư mục gốc là `k12-video-runner`
+- upload file zip làm artifact
+- tạo hoặc cập nhật GitHub Release cùng asset tải về
+
 ## Cài đặt trên Chrome bằng Developer mode
 
 Extension này chưa được đưa lên Chrome Web Store, nên cần cài thủ công bằng chế độ dành cho nhà phát triển.

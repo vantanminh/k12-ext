@@ -4,7 +4,8 @@
   "description": "Hiển thị nút Chạy tiến trình trên trang video của hcm.k12online.vn và gửi yêu cầu hoàn tất video.",
   "version": "1.0.0",
   "action": {
-    "default_title": "K12 Video Runner"
+    "default_title": "K12 Video Runner",
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {

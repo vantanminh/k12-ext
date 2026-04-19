@@ -4,25 +4,58 @@
     const STATUS_ID = 'k12ext-status';
     const SUPPORTED_PATHNAME = /^\/\d+\/page\/LMS\/Lesson\/Courseware\/learn\/[^/?#]+$/i;
     const COMPLETE_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Learning/CourseResult/Video/complete';
+    const GUARD_INTERVAL_MS = 2000;
 
     const state = {
         isRunning: false,
         observer: null,
-        historyPatched: false
+        historyPatched: false,
+        confirmedVideoPage: false,
+        confirmedUrl: '',
+        guardTimer: null
     };
 
-    function isSupportedPage() {
-        if (location.hostname !== 'hcm.k12online.vn') {
-            return false;
-        }
+    function isVideoPageUrl() {
+        return location.hostname === 'hcm.k12online.vn'
+            && SUPPORTED_PATHNAME.test(location.pathname);
+    }
 
-        if (!SUPPORTED_PATHNAME.test(location.pathname)) {
-            return false;
-        }
-
+    function hasVideoElement() {
         return Boolean(
-            document.querySelector('#video-upload, .video-loadDetail video, video source[type^="video/"]')
+            document.querySelector(
+                '#video-upload, .video-loadDetail video, video source[type^="video/"], .video-loadDetail'
+            )
         );
+    }
+
+    function hasVideoScriptMarker() {
+        try {
+            return getInlineScriptSource().includes('LMS.Learning.Lesson.Courseware.Video');
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function detectVideoPage() {
+        if (!isVideoPageUrl()) {
+            return false;
+        }
+
+        if (state.confirmedVideoPage && state.confirmedUrl === location.href) {
+            return true;
+        }
+
+        if (state.confirmedUrl !== location.href) {
+            state.confirmedVideoPage = false;
+        }
+
+        if (hasVideoElement() || hasVideoScriptMarker()) {
+            state.confirmedVideoPage = true;
+            state.confirmedUrl = location.href;
+            return true;
+        }
+
+        return false;
     }
 
     function getQueryValue(name) {
@@ -357,7 +390,13 @@
     }
 
     function createUi() {
-        if (document.getElementById(UI_ID)) {
+        const existing = document.getElementById(UI_ID);
+
+        if (existing) {
+            existing.style.setProperty('display', 'grid', 'important');
+            existing.style.setProperty('visibility', 'visible', 'important');
+            existing.style.setProperty('opacity', '1', 'important');
+            existing.style.setProperty('pointer-events', 'auto', 'important');
             return;
         }
 
@@ -387,12 +426,54 @@
     }
 
     function ensureUi() {
-        if (!isSupportedPage()) {
+        if (!isVideoPageUrl()) {
+            state.confirmedVideoPage = false;
+            state.confirmedUrl = '';
             removeUi();
+            stopGuard();
             return;
         }
 
-        createUi();
+        if (detectVideoPage()) {
+            createUi();
+            startGuard();
+        }
+    }
+
+    function startGuard() {
+        if (state.guardTimer) {
+            return;
+        }
+
+        state.guardTimer = setInterval(() => {
+            if (!isVideoPageUrl()) {
+                stopGuard();
+                return;
+            }
+
+            if (!state.confirmedVideoPage) {
+                return;
+            }
+
+            const el = document.getElementById(UI_ID);
+
+            if (!el) {
+                createUi();
+                return;
+            }
+
+            el.style.setProperty('display', 'grid', 'important');
+            el.style.setProperty('visibility', 'visible', 'important');
+            el.style.setProperty('opacity', '1', 'important');
+            el.style.setProperty('pointer-events', 'auto', 'important');
+        }, GUARD_INTERVAL_MS);
+    }
+
+    function stopGuard() {
+        if (state.guardTimer) {
+            clearInterval(state.guardTimer);
+            state.guardTimer = null;
+        }
     }
 
     function scheduleEnsureUi() {
@@ -452,9 +533,79 @@
         });
     }
 
+    function setupMessageListener() {
+        chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+            if (message.action === 'getStatus') {
+                sendResponse({
+                    isVideoPage: state.confirmedVideoPage || detectVideoPage(),
+                    isRunning: state.isRunning,
+                    uiPresent: Boolean(document.getElementById(UI_ID))
+                });
+                return true;
+            }
+
+            if (message.action === 'runProcess') {
+                if (isVideoPageUrl()) {
+                    state.confirmedVideoPage = true;
+                    state.confirmedUrl = location.href;
+                }
+
+                createUi();
+                startGuard();
+                runProcessFromPopup(sendResponse);
+                return true;
+            }
+
+            return false;
+        });
+    }
+
+    async function runProcessFromPopup(sendResponse) {
+        if (state.isRunning) {
+            sendResponse({ ok: false, message: 'Đang chạy, vui lòng đợi...' });
+            return;
+        }
+
+        const { payload, missingFields } = extractPayload();
+
+        if (missingFields.length > 0) {
+            sendResponse({
+                ok: false,
+                message: `Không đủ dữ liệu: ${missingFields.join(', ')}`
+            });
+            return;
+        }
+
+        state.isRunning = true;
+        setButtonState('Đang chạy...', true);
+        setStatus('Đang gửi yêu cầu hoàn tất video...', 'running');
+
+        try {
+            const result = await submitCompletion(payload);
+
+            if (result.ok) {
+                setStatus('Đã xong. Server trả về status=SUCCESS và percent=100.', 'success');
+                setButtonState('Chạy lại', false);
+                sendResponse({ ok: true, message: 'Thành công! status=SUCCESS, percent=100' });
+            } else {
+                setStatus(`Lỗi: ${result.message}`, 'error');
+                setButtonState('Thử lại', false);
+                sendResponse({ ok: false, message: result.message });
+            }
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : 'Không gửi được request.';
+            setStatus(`Lỗi: ${msg}`, 'error');
+            setButtonState('Thử lại', false);
+            sendResponse({ ok: false, message: msg });
+        } finally {
+            state.isRunning = false;
+        }
+    }
+
     function init() {
         patchHistory();
         observeDomChanges();
+        setupMessageListener();
         ensureUi();
     }
 

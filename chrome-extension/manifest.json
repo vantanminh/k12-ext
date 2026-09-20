@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "K12 Video Runner",
-  "description": "Hiển thị nút Chạy tiến trình trên trang video của hcm.k12online.vn và gửi yêu cầu hoàn tất video.",
-  "version": "1.0.3",
+  "description": "Thêm nút hoàn thành bài học trên trang courseware của hcm.k12online.vn.",
+  "version": "1.1.0",
   "action": {
     "default_title": "K12 Video Runner",
     "default_popup": "popup.html"

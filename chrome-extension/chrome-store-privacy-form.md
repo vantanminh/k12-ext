@@ -6,13 +6,13 @@ File này là nội dung gợi ý để điền nhanh phần `Quyền riêng tư
 
 ### Mô tả mục đích duy nhất
 
-K12 Video Runner có một mục đích duy nhất là hỗ trợ người dùng trên hcm.k12online.vn thao tác hoàn tất tiến trình của bài học video nhanh hơn. Tiện ích chỉ hiển thị nút `Chạy tiến trình` trên đúng trang bài học video, đọc các tham số cần thiết ngay trên trang hiện tại và gửi yêu cầu hoàn tất video tới hệ thống khi người dùng chủ động bấm nút. Tiện ích không dùng cho quảng cáo, theo dõi hành vi, phân tích dữ liệu, thay đổi nội dung trên website khác hoặc cung cấp chức năng ngoài phạm vi này.
+K12 Video Runner có một mục đích duy nhất là hỗ trợ người dùng trên hcm.k12online.vn hoàn thành bài học nhanh hơn. Tiện ích chỉ hiển thị nút `Hoàn thành bài` trên trang bài học courseware, đọc các tham số cần thiết ngay trên trang hiện tại và gửi yêu cầu hoàn thành tới hệ thống khi người dùng chủ động bấm nút. Courseware thường dùng API `Courseware/markComplete`; video vẫn dùng API hoàn tất video. Tiện ích không dùng cho quảng cáo, theo dõi hành vi, phân tích dữ liệu, thay đổi nội dung trên website khác hoặc cung cấp chức năng ngoài phạm vi này.
 
 ## 2. Lý do yêu cầu quyền
 
 ### Lý do yêu cầu Quyền từ phía máy chủ
 
-Tiện ích cần quyền truy cập vào mẫu khớp `https://hcm.k12online.vn/*` vì content script chỉ chạy trên domain này để nhận diện đúng trang bài học video, hiển thị nút thao tác trong giao diện hiện tại, đọc các tham số đã có sẵn trên trang và gửi yêu cầu hoàn tất video tới API cùng domain khi người dùng bấm nút. Tiện ích không yêu cầu quyền trên website khác và không dùng các quyền mở rộng như `tabs`, `storage`, `cookies` hoặc `activeTab`.
+Tiện ích cần quyền truy cập vào mẫu khớp `https://hcm.k12online.vn/*` vì content script chỉ chạy trên domain này để nhận diện đúng trang bài học courseware, hiển thị nút thao tác trong giao diện hiện tại, đọc các tham số đã có sẵn trên trang và gửi yêu cầu hoàn thành tới API cùng domain khi người dùng bấm nút. Tiện ích không yêu cầu quyền trên website khác và không dùng các quyền mở rộng như `tabs`, `storage`, `cookies` hoặc `activeTab`.
 
 ## 3. Có phải bạn đang dùng mã từ xa không?
 
@@ -58,11 +58,11 @@ Nếu repo đang là private, cần chuyển file này sang một URL public tr�
 
 ### Mô tả mục đích duy nhất
 
-K12 Video Runner có một mục đích duy nhất là hỗ trợ người dùng trên hcm.k12online.vn thao tác hoàn tất tiến trình của bài học video nhanh hơn. Tiện ích chỉ hiển thị nút `Chạy tiến trình` trên đúng trang bài học video, đọc các tham số cần thiết trên trang hiện tại và gửi yêu cầu hoàn tất video khi người dùng chủ động bấm nút.
+K12 Video Runner có một mục đích duy nhất là hỗ trợ người dùng trên hcm.k12online.vn hoàn thành bài học nhanh hơn. Tiện ích chỉ hiển thị nút `Hoàn thành bài` trên trang bài học courseware, đọc các tham số cần thiết trên trang hiện tại và gửi yêu cầu hoàn thành khi người dùng chủ động bấm nút.
 
 ### Lý do yêu cầu Quyền từ phía máy chủ
 
-Tiện ích cần quyền truy cập `https://hcm.k12online.vn/*` để chỉ chạy trên domain này, nhận diện đúng trang video, hiển thị nút thao tác, đọc các tham số cần thiết trên trang và gửi request hoàn tất video tới API cùng domain khi người dùng bấm nút.
+Tiện ích cần quyền truy cập `https://hcm.k12online.vn/*` để chỉ chạy trên domain này, nhận diện đúng trang bài học courseware, hiển thị nút thao tác, đọc các tham số cần thiết trên trang và gửi request hoàn thành tới API cùng domain khi người dùng bấm nút.
 
 ### Mã từ xa
 

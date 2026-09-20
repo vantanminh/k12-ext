@@ -3,7 +3,8 @@
     const BUTTON_ID = 'k12ext-run-button';
     const STATUS_ID = 'k12ext-status';
     const SUPPORTED_PATHNAME = /^\/\d+\/page\/LMS\/Lesson\/Courseware\/learn\/[^/?#]+$/i;
-    const COMPLETE_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Learning/CourseResult/Video/complete';
+    const VIDEO_COMPLETE_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Learning/CourseResult/Video/complete';
+    const MARK_COMPLETE_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Learning/Courseware/markComplete';
     const GUARD_INTERVAL_MS = 2000;
 
     const state = {
@@ -15,7 +16,7 @@
         guardTimer: null
     };
 
-    function isVideoPageUrl() {
+    function isCoursewarePageUrl() {
         return location.hostname === 'hcm.k12online.vn'
             && SUPPORTED_PATHNAME.test(location.pathname);
     }
@@ -37,7 +38,7 @@
     }
 
     function detectVideoPage() {
-        if (!isVideoPageUrl()) {
+        if (!isCoursewarePageUrl()) {
             return false;
         }
 
@@ -181,42 +182,131 @@
         return '';
     }
 
+    function findNamedValue(name, source) {
+        const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        return findValue([
+            new RegExp(`(?:^|[^\\w$])["']?${escapedName}["']?\\s*:\\s*["']([^"']*)["']`, 'i'),
+            new RegExp(`(?:^|[^\\w$])["']?${escapedName}["']?\\s*:\\s*([^,\\s}]+)`, 'i'),
+            new RegExp(`\\b${escapedName}\\b\\s*=\\s*["']([^"']*)["']`, 'i')
+        ], source);
+    }
+
+    function normalizeCoursewareType(value) {
+        if (!value) {
+            return '';
+        }
+
+        const type = value.trim().replace(/^LMS\.Learning\.Lesson\./i, '');
+        return /^Courseware\./i.test(type) ? type : `Courseware.${type}`;
+    }
+
+    function getCoursewareType(scriptSource) {
+        const explicitType = getQueryValue('coursewareType')
+            || getQueryValue('options[coursewareType]')
+            || findNamedValue('coursewareType', scriptSource)
+            || findNamedValue('courseware_type', scriptSource);
+
+        if (explicitType) {
+            return normalizeCoursewareType(explicitType);
+        }
+
+        const typeMarker = scriptSource.match(/\bLMS\.Learning\.Lesson\.Courseware\.([A-Za-z][A-Za-z0-9_]*)\b/);
+
+        if (typeMarker) {
+            return `Courseware.${typeMarker[1]}`;
+        }
+
+        const domType = document.querySelector('[data-courseware-type]')?.getAttribute('data-courseware-type');
+
+        if (domType) {
+            return normalizeCoursewareType(domType);
+        }
+
+        const hasPdfViewer = Boolean(document.querySelector(
+            'embed[type="application/pdf"], object[type="application/pdf"], iframe[src*=".pdf" i]'
+        ));
+        const scriptReferencesPdf = /Courseware\.PDF|(?:^|[\/\s"'`])[^\s"'`]+\.pdf(?:[?#\s"'`]|$)/i.test(scriptSource);
+
+        return hasPdfViewer || scriptReferencesPdf ? 'Courseware.PDF' : '';
+    }
+
     function extractPayload() {
         const scriptSource = getInlineScriptSource();
         const videoConfigBlock = extractVideoConfigBlock(scriptSource);
         const primarySource = videoConfigBlock || scriptSource;
+        const lessonMatch = location.pathname.match(SUPPORTED_PATHNAME);
+        const lessonId = lessonMatch ? lessonMatch[0].split('/').pop() : findNamedValue('lessonId', scriptSource);
+        const coursewareId = getQueryValue('coursewareId') || findNamedValue('coursewareId', scriptSource);
+        const courseSiteId = getQueryValue('courseSiteId')
+            || getQueryValue('options[courseSiteId]')
+            || findNamedValue('courseSiteId', scriptSource);
+        const site = getQueryValue('site') || findNamedValue('site', scriptSource);
+        const securityToken = findNamedValue('securityToken', scriptSource);
+        const coursewareType = getCoursewareType(scriptSource);
+        const getOption = (name) => getQueryValue(name)
+            || getQueryValue(`options[${name}]`)
+            || findNamedValue(name, scriptSource);
+
+        const isVideoCourseware = detectVideoPage() || /^Courseware\.Video$/i.test(coursewareType);
+
+        if (isVideoCourseware) {
+            const payload = {
+                courseSiteId: courseSiteId || findNamedValue('courseSiteId', primarySource),
+                courseResultId: findNamedValue('courseResultId', primarySource),
+                'options[scheduleId]': getOption('scheduleId') || findNamedValue('scheduleId', primarySource),
+                'options[courseId]': getOption('courseId') || findNamedValue('courseId', primarySource),
+                'options[classroomId]': getOption('classroomId') || findNamedValue('classroomId', primarySource),
+                'options[contentSharingId]': getOption('contentSharingId') || findNamedValue('contentSharingId', primarySource),
+                'options[trainingModuleId]': getOption('trainingModuleId') || findNamedValue('trainingModuleId', primarySource),
+                site,
+                securityToken
+            };
+            const missingFields = [];
+
+            if (!payload.courseSiteId) {
+                missingFields.push('courseSiteId');
+            }
+
+            if (!payload.courseResultId) {
+                missingFields.push('courseResultId');
+            }
+
+            if (!payload.site) {
+                missingFields.push('site');
+            }
+
+            if (!payload.securityToken) {
+                missingFields.push('securityToken');
+            }
+
+            return { kind: 'video', payload, missingFields };
+        }
 
         const payload = {
-            courseSiteId: getQueryValue('courseSiteId') || findValue([/courseSiteId:\s*["']?([^"',\s}]+)/], primarySource),
-            courseResultId: findValue([/courseResultId:\s*["']([^"']+)["']/], primarySource),
-            'options[scheduleId]': findValue([/scheduleId:\s*["']([^"']*)["']/], primarySource),
-            'options[courseId]': findValue([/courseId:\s*["']([^"']*)["']/], primarySource),
-            'options[classroomId]': findValue([/classroomId:\s*["']([^"']*)["']/], primarySource),
-            'options[contentSharingId]': findValue([/contentSharingId:\s*["']([^"']*)["']/], primarySource),
-            'options[trainingModuleId]': findValue([/trainingModuleId:\s*["']([^"']*)["']/], primarySource),
-            site: getQueryValue('site') || findValue([/\bsite:\s*["']?([^"',\s}]+)/], scriptSource),
-            securityToken: findValue([/securityToken:\s*["']([^"']+)["']/], scriptSource)
+            coursewareId,
+            lessonId,
+            'options[courseSiteId]': courseSiteId,
+            'options[scheduleId]': getOption('scheduleId'),
+            'options[courseId]': getOption('courseId'),
+            'options[classroomId]': getOption('classroomId'),
+            'options[contentSharingId]': getOption('contentSharingId'),
+            'options[trainingModuleId]': getOption('trainingModuleId'),
+            'options[coursewareId]': coursewareId,
+            'options[coursewareType]': coursewareType,
+            site,
+            securityToken
         };
-
         const missingFields = [];
 
-        if (!payload.courseSiteId) {
-            missingFields.push('courseSiteId');
-        }
+        ['coursewareId', 'lessonId', 'options[courseSiteId]', 'options[coursewareType]', 'site', 'securityToken']
+            .forEach((field) => {
+                if (!payload[field]) {
+                    missingFields.push(field);
+                }
+            });
 
-        if (!payload.courseResultId) {
-            missingFields.push('courseResultId');
-        }
-
-        if (!payload.site) {
-            missingFields.push('site');
-        }
-
-        if (!payload.securityToken) {
-            missingFields.push('securityToken');
-        }
-
-        return { payload, missingFields };
+        return { kind: 'courseware', payload, missingFields };
     }
 
     function createRequestBody(payload) {
@@ -273,8 +363,8 @@
             : `HTTP ${response.status}: ${response.statusText || 'Yêu cầu thất bại.'}`;
     }
 
-    async function submitCompletion(payload) {
-        const response = await fetch(COMPLETE_ENDPOINT, {
+    async function submitVideoCompletion(payload) {
+        const response = await fetch(VIDEO_COMPLETE_ENDPOINT, {
             method: 'POST',
             credentials: 'include',
             headers: {
@@ -307,6 +397,59 @@
             message: getErrorMessage(response, data, rawText || 'Phản hồi không đúng định dạng mong đợi.'),
             data
         };
+    }
+
+    async function submitCoursewareCompletion(payload) {
+        const response = await fetch(MARK_COMPLETE_ENDPOINT, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                Accept: '*/*',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: createRequestBody(payload).toString()
+        });
+
+        const { rawText, data } = await parseResponse(response);
+
+        if (!response.ok) {
+            return {
+                ok: false,
+                message: getErrorMessage(response, data, rawText),
+                data
+            };
+        }
+
+        if (response.redirected && !response.url.includes('/api/LMS/Learning/Courseware/markComplete')) {
+            return {
+                ok: false,
+                message: 'Phiên đăng nhập có thể đã hết hạn. Hãy đăng nhập lại rồi thử tiếp.',
+                data
+            };
+        }
+
+        if (data === false || data === 0 || (data === null && rawText.trim())) {
+            return {
+                ok: false,
+                message: getErrorMessage(response, data, rawText),
+                data
+            };
+        }
+
+        if (data && typeof data === 'object') {
+            const status = data.status == null ? '' : String(data.status).toUpperCase();
+
+            if ((status && status !== 'SUCCESS') || data.success === false || data.ok === false || data.error) {
+                return {
+                    ok: false,
+                    message: getErrorMessage(response, data, rawText),
+                    data
+                };
+            }
+        }
+
+        return { ok: true, data };
     }
 
     function getUiElements() {
@@ -348,23 +491,30 @@
             return;
         }
 
-        const { payload, missingFields } = extractPayload();
+        const request = extractPayload();
 
-        if (missingFields.length > 0) {
-            setStatus(`Không đủ dữ liệu để gửi request: ${missingFields.join(', ')}`, 'error');
+        if (request.missingFields.length > 0) {
+            setStatus(`Không đủ dữ liệu để gửi request: ${request.missingFields.join(', ')}`, 'error');
             return;
         }
 
         state.isRunning = true;
         setButtonState('Đang chạy...', true);
-        setStatus('Đang gửi yêu cầu hoàn tất video...', 'running');
+        setStatus('Đang gửi yêu cầu hoàn thành bài học...', 'running');
 
         try {
-            const result = await submitCompletion(payload);
+            const result = request.kind === 'video'
+                ? await submitVideoCompletion(request.payload)
+                : await submitCoursewareCompletion(request.payload);
 
             if (result.ok) {
-                setStatus('Đã xong. Server trả về status=SUCCESS và percent=100.', 'success');
-                setButtonState('Chạy lại', false);
+                setStatus(
+                    request.kind === 'video'
+                        ? 'Video đã hoàn tất. Server trả về status=SUCCESS và percent=100.'
+                        : 'Bài học đã được đánh dấu hoàn thành.',
+                    'success'
+                );
+                setButtonState('Hoàn thành lại', false);
                 return;
             }
 
@@ -407,9 +557,9 @@
         container.dataset.state = 'idle';
         container.innerHTML = [
             '<div class="k12ext-heading">K12 Video Runner</div>',
-            '<div class="k12ext-subheading">Nút luôn hiển thị để gửi tiến trình video.</div>',
-            `<button type="button" id="${BUTTON_ID}" class="k12ext-button">Chạy tiến trình</button>`,
-            `<div id="${STATUS_ID}" class="k12ext-status" data-state="idle">Sẵn sàng gửi yêu cầu hoàn tất video.</div>`
+            '<div class="k12ext-subheading">Hoàn thành bài học ngay bằng một lần bấm.</div>',
+            `<button type="button" id="${BUTTON_ID}" class="k12ext-button">Hoàn thành bài</button>`,
+            `<div id="${STATUS_ID}" class="k12ext-status" data-state="idle">Sẵn sàng hoàn thành bài học.</div>`
         ].join('');
 
         document.body.appendChild(container);
@@ -426,7 +576,7 @@
     }
 
     function ensureUi() {
-        if (!isVideoPageUrl()) {
+        if (!isCoursewarePageUrl()) {
             state.confirmedVideoPage = false;
             state.confirmedUrl = '';
             removeUi();
@@ -434,10 +584,9 @@
             return;
         }
 
-        if (detectVideoPage()) {
-            createUi();
-            startGuard();
-        }
+        detectVideoPage();
+        createUi();
+        startGuard();
     }
 
     function startGuard() {
@@ -446,12 +595,8 @@
         }
 
         state.guardTimer = setInterval(() => {
-            if (!isVideoPageUrl()) {
+            if (!isCoursewarePageUrl()) {
                 stopGuard();
-                return;
-            }
-
-            if (!state.confirmedVideoPage) {
                 return;
             }
 
@@ -537,6 +682,7 @@
         chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             if (message.action === 'getStatus') {
                 sendResponse({
+                    isCoursewarePage: isCoursewarePageUrl(),
                     isVideoPage: state.confirmedVideoPage || detectVideoPage(),
                     isRunning: state.isRunning,
                     uiPresent: Boolean(document.getElementById(UI_ID))
@@ -545,13 +691,12 @@
             }
 
             if (message.action === 'runProcess') {
-                if (isVideoPageUrl()) {
-                    state.confirmedVideoPage = true;
-                    state.confirmedUrl = location.href;
+                if (isCoursewarePageUrl()) {
+                    detectVideoPage();
+                    createUi();
+                    startGuard();
                 }
 
-                createUi();
-                startGuard();
                 runProcessFromPopup(sendResponse);
                 return true;
             }
@@ -566,27 +711,32 @@
             return;
         }
 
-        const { payload, missingFields } = extractPayload();
+        const request = extractPayload();
 
-        if (missingFields.length > 0) {
+        if (request.missingFields.length > 0) {
             sendResponse({
                 ok: false,
-                message: `Không đủ dữ liệu: ${missingFields.join(', ')}`
+                message: `Không đủ dữ liệu: ${request.missingFields.join(', ')}`
             });
             return;
         }
 
         state.isRunning = true;
         setButtonState('Đang chạy...', true);
-        setStatus('Đang gửi yêu cầu hoàn tất video...', 'running');
+        setStatus('Đang gửi yêu cầu hoàn thành bài học...', 'running');
 
         try {
-            const result = await submitCompletion(payload);
+            const result = request.kind === 'video'
+                ? await submitVideoCompletion(request.payload)
+                : await submitCoursewareCompletion(request.payload);
 
             if (result.ok) {
-                setStatus('Đã xong. Server trả về status=SUCCESS và percent=100.', 'success');
-                setButtonState('Chạy lại', false);
-                sendResponse({ ok: true, message: 'Thành công! status=SUCCESS, percent=100' });
+                const message = request.kind === 'video'
+                    ? 'Video đã hoàn tất. status=SUCCESS, percent=100.'
+                    : 'Bài học đã được đánh dấu hoàn thành.';
+                setStatus(message, 'success');
+                setButtonState('Hoàn thành lại', false);
+                sendResponse({ ok: true, message });
             } else {
                 setStatus(`Lỗi: ${result.message}`, 'error');
                 setButtonState('Thử lại', false);

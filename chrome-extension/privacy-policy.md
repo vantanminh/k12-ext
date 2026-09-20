@@ -1,10 +1,10 @@
 # Privacy Policy for K12 Video Runner
 
-Last updated: 2026-04-19
+Last updated: 2026-09-20
 
 ## Overview
 
-K12 Video Runner is a Chrome extension that helps users interact with video lesson pages on `hcm.k12online.vn`. The extension adds a `Chay tien trinh` button on supported video pages and, when the user clicks the button, sends a completion request to the same website using the user's current logged-in session.
+K12 Video Runner is a Chrome extension that helps users complete courseware on `hcm.k12online.vn`. The extension adds a `Hoàn thành bài` button on supported lesson pages and, when the user clicks the button, sends a completion request to the same website using the user's current logged-in session. Non-video courseware uses the `Courseware/markComplete` API; video lessons keep using the site's video completion API.
 
 ## What data the extension collects
 
@@ -18,13 +18,13 @@ To perform its single purpose, the extension may locally read information alread
 
 - page URL parameters
 - page source values embedded in scripts
-- video-related identifiers required by the website to process the completion action
+- courseware and lesson identifiers, courseware type, and other values required by the website to process the completion action
 
 This information is processed locally in the user's browser to enable the requested action.
 
 ## What the extension sends
 
-When the user explicitly clicks the action button, the extension sends a request only to `hcm.k12online.vn` in order to complete the video progress action on that website.
+When the user explicitly clicks the action button, the extension sends a request only to `hcm.k12online.vn` in order to complete the lesson on that website.
 
 The extension does not send user data to the developer or to unrelated third parties.
 
@@ -36,7 +36,7 @@ The extension uses access limited to:
 
 This access is used only so the extension can:
 
-- detect supported video lesson pages
+- detect supported courseware lesson pages
 - display the action button on those pages
 - read the values needed to perform the requested action
 - send the completion request back to the same website

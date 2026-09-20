@@ -1,6 +1,6 @@
 # K12 Video Runner
 
-Chrome extension này hiển thị nút `Chạy tiến trình` trên trang video của `https://hcm.k12online.vn/*`.
+Chrome extension này hiển thị nút `Hoàn thành bài` trên trang bài học courseware của `https://hcm.k12online.vn/*`.
 
 ## Tải bản đóng gói sẵn từ GitHub Release
 
@@ -84,7 +84,7 @@ Nếu không có lỗi, bạn sẽ thấy extension `K12 Video Runner` xuất hi
 Sau khi load xong, Chrome thường hiển thị một thẻ extension có:
 
 - Tên extension: `K12 Video Runner`
-- Version: `1.0.0`
+- Version: `1.1.0`
 - Trạng thái đang bật
 
 Nếu Chrome báo lỗi ở file `manifest.json` hoặc `content.js`, cần sửa lỗi rồi quay lại trang `chrome://extensions` và bấm `Reload` trên extension đó.
@@ -100,21 +100,17 @@ Bước này không bắt buộc vì extension chạy trực tiếp trên trang,
 ### 7. Sử dụng trên trang K12
 
 1. Đăng nhập vào hệ thống `https://hcm.k12online.vn`.
-2. Mở đúng trang bài học video, ví dụ dạng:
+2. Mở trang bài học, ví dụ dạng:
 
 	`https://hcm.k12online.vn/79000729/page/LMS/Lesson/Courseware/learn/...`
 
 3. Chờ trang tải xong.
-4. Extension sẽ chèn nút `Chạy tiến trình` vào khu vực action của bài học.
-5. Bấm nút `Chạy tiến trình`.
+4. Extension sẽ chèn nút `Hoàn thành bài` trên trang.
+5. Bấm nút `Hoàn thành bài` một lần.
 
-Nếu server trả về:
+Với courseware không phải video, extension gửi yêu cầu `Courseware/markComplete` bằng phiên đăng nhập hiện tại. Với video, extension tiếp tục dùng API hoàn tất video hiện có.
 
-`{"status":"SUCCESS","percent":100}`
-
-thì trạng thái sẽ báo hoàn tất ngay trên giao diện.
-
-Nếu request lỗi, extension sẽ hiển thị nội dung lỗi tương ứng cạnh nút.
+Khi server xác nhận thành công, giao diện sẽ báo bài học đã hoàn thành. Nếu request lỗi, extension hiển thị nội dung lỗi ngay cạnh nút.
 
 ### 8. Khi sửa code extension và muốn cập nhật
 
@@ -134,17 +130,17 @@ Vì đây là bản cài bằng `Load unpacked`, mỗi lần bạn sửa code th
 
 ### 10. Lỗi thường gặp
 
-`Không thấy nút Chạy tiến trình`:
+`Không thấy nút Hoàn thành bài`:
 
-- Bạn chưa mở đúng URL trang video.
+- Bạn chưa mở đúng URL trang bài học courseware.
 - Trang chưa tải xong hoàn toàn.
 - Bạn đã load nhầm thư mục, không phải `d:\code\k12-ext\chrome-extension`.
 - Extension đang bị tắt trong `chrome://extensions`.
 
 `Bấm nút nhưng báo thiếu dữ liệu`:
 
-- Trang hiện tại không chứa đủ thông tin `courseResultId`, `securityToken` hoặc `courseSiteId`.
-- Bạn đang ở sai loại nội dung, không phải video lesson page.
+- Courseware thường cần `coursewareId`, `lessonId`, `courseSiteId`, `coursewareType`, `site` và `securityToken`.
+- Video có thể cần thêm `courseResultId`.
 
 `Bấm nút nhưng server trả lỗi`:
 
@@ -158,15 +154,15 @@ Vì đây là bản cài bằng `Load unpacked`, mỗi lần bạn sửa code th
 2. Bật `Developer mode`.
 3. Bấm `Load unpacked`.
 4. Chọn thư mục `d:\code\k12-ext\chrome-extension`.
-5. Mở trang video K12 đã đăng nhập.
-6. Bấm `Chạy tiến trình`.
+5. Mở trang bài học K12 đã đăng nhập.
+6. Bấm `Hoàn thành bài`.
 
 ## Extension làm gì
 
 - Chỉ chạy trên trang có URL dạng `https://hcm.k12online.vn/<portal>/page/LMS/Lesson/Courseware/learn/<lessonId>`.
-- Tự đọc các giá trị `courseResultId`, `courseSiteId`, `site`, `securityToken` và `options[...]` từ HTML/script hiện tại của trang.
-- Gửi `POST` tới API `https://hcm.k12online.vn/api/LMS/Learning/CourseResult/Video/complete` bằng đúng phiên đăng nhập hiện tại.
-- Nếu phản hồi là `{"status":"SUCCESS","percent":100}` thì báo hoàn tất.
+- Tự đọc `coursewareId`, `lessonId`, `courseSiteId`, `coursewareType`, `site`, `securityToken` và các giá trị `options[...]` từ URL/HTML/script của trang.
+- Gửi `POST` tới `Courseware/markComplete` cho courseware thường bằng phiên đăng nhập hiện tại; video tiếp tục dùng API hoàn tất video.
+- Không lưu hoặc hardcode cookie và token đăng nhập.
 - Nếu phản hồi khác hoặc request lỗi, trạng thái lỗi sẽ hiển thị ngay cạnh nút.
 
 ## Ghi chú

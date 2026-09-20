@@ -14,15 +14,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const response = await chrome.tabs.sendMessage(tab.id, { action: 'getStatus' });
 
-        if (response && response.isVideoPage) {
-            statusEl.textContent = 'Đã phát hiện trang video K12.';
+        if (response && response.isCoursewarePage) {
+            statusEl.textContent = 'Đã phát hiện trang bài học K12.';
             statusEl.className = 'status success';
             runBtn.disabled = false;
         } else {
-            statusEl.textContent = 'Trang K12 nhưng chưa phát hiện video. Vẫn có thể thử chạy.';
+            statusEl.textContent = 'Chưa phát hiện trang bài học. Vẫn có thể thử gửi yêu cầu.';
             statusEl.className = 'status warning';
             runBtn.disabled = false;
-            runBtn.textContent = 'Thử chạy tiến trình';
+            runBtn.textContent = 'Thử hoàn thành bài';
         }
     } catch (_) {
         statusEl.textContent = 'Không kết nối được content script. Thử tải lại trang (F5).';
@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     runBtn.addEventListener('click', async () => {
         runBtn.disabled = true;
-        runBtn.textContent = 'Đang chạy...';
+        runBtn.textContent = 'Đang xử lý...';
         resultEl.textContent = '';
         resultEl.className = 'result';
 
@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (response && response.ok) {
                 resultEl.textContent = response.message;
                 resultEl.className = 'result success';
-                runBtn.textContent = 'Chạy lại';
+                runBtn.textContent = 'Hoàn thành lại';
             } else {
                 resultEl.textContent = (response && response.message) || 'Lỗi không xác định.';
                 resultEl.className = 'result error';

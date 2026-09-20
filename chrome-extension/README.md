@@ -88,7 +88,7 @@ Nếu không có lỗi, bạn sẽ thấy extension `K12 Video Runner` xuất hi
 Sau khi load xong, Chrome thường hiển thị một thẻ extension có:
 
 - Tên extension: `K12 Video Runner`
-- Version: `1.2.0`
+- Version: `1.2.1`
 - Trạng thái đang bật
 
 Nếu Chrome báo lỗi ở file `manifest.json` hoặc `content.js`, cần sửa lỗi rồi quay lại trang `chrome://extensions` và bấm `Reload` trên extension đó.
@@ -112,7 +112,7 @@ Bước này không bắt buộc vì extension chạy trực tiếp trên trang,
 4. Bấm icon K12 Video Runner trên thanh công cụ để mở sidebar.
 5. Trong tab `Chọn bài`, chọn các bài muốn đánh dấu rồi bấm `Hoàn thành bài đã chọn`.
 
-Sidebar quét các liên kết bài học trong danh sách hiện tại, ưu tiên module `#listingModule3`. Với bài học đang mở, nút nổi `Hoàn thành bài` vẫn thao tác một lần như trước. Trong tab `Quản lý`, có thể bật/tắt nút nổi hoặc mở trang quản lý extension của Chrome.
+Sidebar quét các dòng bài học trong danh sách hiện tại, ưu tiên module `#listingModule3`; mỗi dòng có `data-type="Lesson"` và `data-id` được nhận dạng cùng với liên kết courseware thông thường. Sidebar hiển thị tiến độ hiện tại. Với dòng danh sách, extension lấy liên kết chuẩn bằng API `Lesson/learn` khi người dùng bấm hoàn thành, rồi đọc dữ liệu bài để gọi API đánh dấu hoàn thành. Với bài học đang mở, nút nổi `Hoàn thành bài` vẫn thao tác một lần như trước. Trong tab `Quản lý`, có thể bật/tắt nút nổi hoặc mở trang quản lý extension của Chrome.
 
 Với courseware không phải video, extension gửi yêu cầu `Courseware/markComplete` bằng phiên đăng nhập hiện tại. Với video, extension tiếp tục dùng API hoàn tất video hiện có. Sidebar hiển thị tiến độ và kết quả cho từng bài.
 
@@ -136,7 +136,7 @@ Vì đây là bản cài bằng `Load unpacked`, mỗi lần bạn sửa code th
 
 `Không thấy bài học trong sidebar`:
 
-- Trang hiện tại chưa có liên kết mở bài học courseware trong danh sách đang hiển thị.
+- Trang hiện tại chưa có dòng bài học hoặc liên kết courseware trong danh sách đang hiển thị.
 - Trang chưa tải xong hoàn toàn.
 - Bạn đã load nhầm thư mục, không phải `d:\code\k12-ext\chrome-extension`.
 - Extension đang bị tắt trong `chrome://extensions`.
@@ -164,7 +164,7 @@ Vì đây là bản cài bằng `Load unpacked`, mỗi lần bạn sửa code th
 ## Extension làm gì
 
 - Chỉ đọc nội dung trên `hcm.k12online.vn`; sidebar quét danh sách bài học đang hiển thị, gồm module `#listingModule3` khi có.
-- Tự đọc `coursewareId`, `lessonId`, `courseSiteId`, `coursewareType`, `site`, `securityToken` và các giá trị `options[...]` từ URL/HTML/script của trang.
+- Tự đọc `lessonId` và tên bài từ các dòng `Lesson` của danh sách; khi người dùng bấm hoàn thành, lấy liên kết chuẩn bằng API `Lesson/learn`, rồi đọc `coursewareId`, `courseSiteId`, `coursewareType`, `site`, `securityToken` và các giá trị `options[...]` từ HTML/script của bài.
 - Gửi `POST` tới `Courseware/markComplete` cho courseware thường bằng phiên đăng nhập hiện tại; video tiếp tục dùng API hoàn tất video.
 - Có mục Quản lý để bật/tắt nút nổi trên trang và mở trang quản lý Chrome.
 - Chỉ gửi yêu cầu cho các bài người dùng đã chọn và bấm hoàn thành.

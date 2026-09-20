@@ -4,6 +4,7 @@
     const STATUS_ID = 'k12ext-status';
     const SUPPORTED_PATHNAME = /^\/\d+\/page\/LMS\/Lesson\/Courseware\/learn\/[^/?#]+$/i;
     const VIDEO_COMPLETE_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Learning/CourseResult/Video/complete';
+    const LESSON_LAUNCH_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Learning/Lesson/learn';
     const MARK_COMPLETE_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Learning/Courseware/markComplete';
     const GUARD_INTERVAL_MS = 2000;
 
@@ -357,11 +358,14 @@
 
     function getLessonCandidate(element) {
         const row = element.closest(
-            '[data-lesson-id], [data-courseware-id], tr, li, [class*="lesson"], [class*="courseware"], [class*="item"]'
+            '[data-type="Lesson"][data-id], [data-lesson-id], [data-courseware-id], tr, li, [class*="lesson"], [class*="courseware"], [class*="item"]'
         ) || element;
         const nestedLink = row.querySelector('a[href], [data-href], [data-url], [onclick]');
         const pageUrl = getElementLessonUrl(element) || (nestedLink ? getElementLessonUrl(nestedLink) : null);
-        const rowLessonId = row.getAttribute('data-lesson-id') || '';
+        const rowType = (row.getAttribute('data-type') || '').toLowerCase();
+        const rowLessonId = row.getAttribute('data-lesson-id')
+            || (rowType === 'lesson' ? row.getAttribute('data-id') : '')
+            || '';
         const rowCoursewareId = row.getAttribute('data-courseware-id') || '';
 
         if (!pageUrl && !rowLessonId) {
@@ -420,11 +424,14 @@
         const site = params.get('site') || '';
         const key = `${lessonId}:${coursewareId || ''}:${courseSiteId}:${site}`;
         const labelContainer = element.closest('tr, li, [class*="lesson"], [class*="courseware"], [class*="item"]') || element;
-        const titleText = element.getAttribute('title')
+        const rowTitle = row.querySelector('[data-column-index="4"] strong, [data-column-index="4"] button, [data-column-index="4"] a')?.textContent;
+        const titleText = rowTitle
+            || element.getAttribute('title')
             || element.textContent
             || labelContainer.textContent
             || `Bài học ${lessonId}`;
         const title = titleText.replace(/\s+/g, ' ').trim().slice(0, 140) || `Bài học ${lessonId}`;
+        const progress = row.querySelector('[data-column-index="6"]')?.textContent.trim() || '';
 
         return {
             key,
@@ -434,7 +441,9 @@
             coursewareId,
             courseSiteId,
             site,
-            coursewareType: params.get('coursewareType') || ''
+            coursewareType: params.get('coursewareType') || '',
+            progress,
+            requiresLessonLink: !pageUrl && rowType === 'lesson'
         };
     }
 
@@ -468,7 +477,9 @@
         const elements = new Set();
 
         roots.forEach((root) => {
-            root.querySelectorAll('a[href], [data-href], [data-url], [onclick], [data-lesson-id], [data-courseware-id]').forEach((element) => {
+            root.querySelectorAll(
+                'a[href], [data-href], [data-url], [onclick], [data-lesson-id], [data-courseware-id], tr[data-type="Lesson"][data-id]'
+            ).forEach((element) => {
                 elements.add(element);
             });
         });
@@ -481,6 +492,66 @@
         });
 
         return Array.from(lessons.values());
+    }
+
+    async function resolveLessonPageUrl(candidate) {
+        const scriptSource = getInlineScriptSource();
+        const securityToken = findNamedValue('securityToken', scriptSource);
+        const site = candidate.site || getQueryValue('site');
+
+        if (!candidate.lessonId || !site || !securityToken) {
+            return {
+                ok: false,
+                message: 'Thiếu lessonId, site hoặc securityToken để lấy liên kết bài học.'
+            };
+        }
+
+        const launchPayload = {
+            id: candidate.lessonId,
+            'options[showConfirmInfo]': 1,
+            site,
+            securityToken
+        };
+        const groupId = findNamedValue('groupId', scriptSource);
+        const accountId = findNamedValue('accountId', scriptSource);
+
+        if (groupId) {
+            launchPayload.groupId = groupId;
+        } else if (accountId) {
+            launchPayload.accountId = accountId;
+        }
+
+        const response = await fetch(LESSON_LAUNCH_ENDPOINT, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                Accept: '*/*',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: createRequestBody(launchPayload).toString()
+        });
+        const { rawText, data } = await parseResponse(response);
+
+        if (!response.ok) {
+            return { ok: false, message: getErrorMessage(response, data, rawText) };
+        }
+
+        if (!data || data.status !== 'SUCCESS' || !data.link) {
+            return {
+                ok: false,
+                message: data && data.message
+                    ? data.message
+                    : 'Hệ thống không trả về liên kết bài học.'
+            };
+        }
+
+        const lessonUrl = new URL(data.link, location.href);
+        if (lessonUrl.origin !== location.origin || !SUPPORTED_PATHNAME.test(lessonUrl.pathname)) {
+            return { ok: false, message: 'Liên kết bài học hệ thống trả về không hợp lệ.' };
+        }
+
+        return { ok: true, href: lessonUrl.href };
     }
 
     function fillCandidatePayload(request, candidate) {
@@ -507,7 +578,16 @@
     }
 
     async function getCandidatePayload(candidate) {
-        const lessonUrl = new URL(candidate.href, location.href);
+        let candidateHref = candidate.href;
+        if (candidate.requiresLessonLink) {
+            const resolved = await resolveLessonPageUrl(candidate);
+            if (!resolved.ok) {
+                return resolved;
+            }
+            candidateHref = resolved.href;
+        }
+
+        const lessonUrl = new URL(candidateHref, location.href);
         if (lessonUrl.origin !== location.origin || !SUPPORTED_PATHNAME.test(lessonUrl.pathname)) {
             return { ok: false, message: 'Liên kết bài học không hợp lệ.' };
         }
@@ -950,7 +1030,7 @@
                     lessons,
                     message: lessons.length > 0
                         ? `${lessons.length} bài học tìm thấy trên trang.`
-                        : 'Trang này chưa có liên kết bài học courseware để chọn.'
+                        : 'Trang này chưa có bài học trong danh sách để chọn.'
                 });
                 return true;
             }

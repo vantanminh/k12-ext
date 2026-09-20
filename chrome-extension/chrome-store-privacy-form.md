@@ -6,13 +6,13 @@ File này là nội dung gợi ý để điền nhanh phần `Quyền riêng tư
 
 ### Mô tả mục đích duy nhất
 
-K12 Video Runner có một mục đích duy nhất là giúp người dùng chọn bài học trên hcm.k12online.vn và đánh dấu các bài đã chọn là hoàn thành. Sidebar Chrome đọc các liên kết bài học đang hiển thị, sau đó gửi yêu cầu cho từng bài khi người dùng chủ động chọn và bấm nút. Courseware thường dùng API `Courseware/markComplete`; video vẫn dùng API hoàn tất video. Nút nổi `Hoàn thành bài` trên trang riêng lẻ có thể bật hoặc tắt trong mục Quản lý. Tiện ích không dùng cho quảng cáo, theo dõi hành vi, phân tích dữ liệu hoặc website khác.
+K12 Video Runner có một mục đích duy nhất là giúp người dùng chọn bài học trên hcm.k12online.vn và đánh dấu các bài đã chọn là hoàn thành. Sidebar đọc tên, ID và tiến độ từ các dòng bài đang hiển thị. Khi người dùng chọn bài và bấm nút, tiện ích gửi lessonId tới API `Lesson/learn` để lấy liên kết chuẩn, đọc dữ liệu cần thiết từ trang bài, rồi gửi yêu cầu hoàn thành. Courseware thường dùng API `Courseware/markComplete`; video vẫn dùng API hoàn tất video. Nút nổi `Hoàn thành bài` trên trang riêng lẻ có thể bật hoặc tắt trong mục Quản lý. Tiện ích không dùng cho quảng cáo, theo dõi hành vi, phân tích dữ liệu hoặc website khác.
 
 ## 2. Lý do yêu cầu quyền
 
 ### Lý do yêu cầu Quyền từ phía máy chủ
 
-Tiện ích cần quyền truy cập vào mẫu khớp `https://hcm.k12online.vn/*` để content script đọc danh sách bài học đang hiển thị, lấy các tham số cần thiết từ trang bài học và gửi yêu cầu cùng domain sau khi người dùng chọn bài. Quyền `sidePanel` mở sidebar Chrome; quyền `storage` chỉ lưu cục bộ tùy chọn bật/tắt nút nổi. Tiện ích không yêu cầu quyền truy cập website khác, cookies hoặc activeTab.
+Tiện ích cần quyền truy cập vào mẫu khớp `https://hcm.k12online.vn/*` để content script đọc danh sách bài học đang hiển thị, lấy liên kết bài bằng API `Lesson/learn`, đọc các tham số cần thiết từ trang bài học và gửi yêu cầu cùng domain sau khi người dùng chọn bài. Quyền `sidePanel` mở sidebar Chrome; quyền `storage` chỉ lưu cục bộ tùy chọn bật/tắt nút nổi. Tiện ích không yêu cầu quyền truy cập website khác, cookies hoặc activeTab.
 
 ## 3. Có phải bạn đang dùng mã từ xa không?
 
@@ -63,7 +63,7 @@ K12 Video Runner mở sidebar Chrome để người dùng chọn các bài học
 
 ### Lý do yêu cầu Quyền từ phía máy chủ
 
-Tiện ích cần quyền `https://hcm.k12online.vn/*` để đọc danh sách bài học và gửi request hoàn thành trên cùng domain, quyền `sidePanel` để mở sidebar Chrome, và quyền `storage` để nhớ tùy chọn nút nổi cục bộ.
+Tiện ích cần quyền `https://hcm.k12online.vn/*` để đọc danh sách bài học, gọi API `Lesson/learn` lấy liên kết bài và gửi request hoàn thành trên cùng domain, quyền `sidePanel` để mở sidebar Chrome, và quyền `storage` để nhớ tùy chọn nút nổi cục bộ.
 
 ### Mã từ xa
 

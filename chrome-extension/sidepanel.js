@@ -205,21 +205,28 @@ function renderLessons() {
         meta.className = 'lesson-meta';
         meta.textContent = result
             ? result.ok ? 'Đã hoàn thành' : result.message
-            : candidate.coursewareId ? 'Courseware sẵn sàng' : 'Sẽ tải thông tin khi xử lý';
+            : [
+                candidate.progress ? `Tiến độ ${candidate.progress}` : '',
+                candidate.coursewareId ? 'Courseware sẵn sàng' : 'Sẽ lấy thông tin khi xử lý'
+            ].filter(Boolean).join(' · ');
         if (result) {
             meta.style.color = result.ok ? '#0f766e' : '#b42318';
         }
         copy.append(title, meta);
 
-        const openLink = document.createElement('a');
-        openLink.className = 'lesson-open';
-        openLink.href = candidate.href;
-        openLink.target = '_blank';
-        openLink.rel = 'noopener noreferrer';
-        openLink.textContent = 'Mở';
-        openLink.setAttribute('aria-label', `Mở ${candidate.title}`);
+        card.append(option, copy);
 
-        card.append(option, copy, openLink);
+        if (!candidate.requiresLessonLink) {
+            const openLink = document.createElement('a');
+            openLink.className = 'lesson-open';
+            openLink.href = candidate.href;
+            openLink.target = '_blank';
+            openLink.rel = 'noopener noreferrer';
+            openLink.textContent = 'Mở';
+            openLink.setAttribute('aria-label', `Mở ${candidate.title}`);
+            card.append(openLink);
+        }
+
         elements.lessonList.append(card);
     });
 

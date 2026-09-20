@@ -4,7 +4,7 @@ Last updated: 2026-09-20
 
 ## Overview
 
-K12 Video Runner adds a Chrome side panel where users can choose lessons listed on `hcm.k12online.vn` and mark the selected lessons complete. A `Hoàn thành bài` button remains available on individual lesson pages. Non-video courseware uses the `Courseware/markComplete` API; video lessons keep using the site's video completion API.
+K12 Video Runner adds a Chrome side panel where users can choose lessons listed on `hcm.k12online.vn` and mark the selected lessons complete. For lessons selected from a list, the extension sends the selected lesson ID to the site's `Lesson/learn` API to get its canonical lesson link, then reads the lesson page before requesting completion. A `Hoàn thành bài` button remains available on individual lesson pages. Non-video courseware uses the `Courseware/markComplete` API; video lessons keep using the site's video completion API.
 
 ## What data the extension collects
 
@@ -18,7 +18,7 @@ To perform its single purpose, the extension may locally read information alread
 
 - page URL parameters
 - page source values embedded in scripts
-- lesson titles and links shown in the current lesson list
+- lesson titles, progress values, and identifiers shown in the current lesson list
 - courseware and lesson identifiers, courseware type, and other values required by the website to process the completion action
 - the lessons the user selects for completion
 

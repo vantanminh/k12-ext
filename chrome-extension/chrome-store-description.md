@@ -16,9 +16,9 @@ Mở sidebar để chọn và đánh dấu hoàn thành nhiều bài học K12 c
 
 K12 Video Runner là tiện ích mở rộng dành cho người dùng đang làm việc trên hệ thống hcm.k12online.vn.
 
-K12 Video Runner mở một sidebar ngay trong Chrome để người dùng chọn các bài học đang hiển thị trên trang K12. Sidebar quét các liên kết bài học trong module danh sách như `#listingModule3`, cho phép tìm kiếm, chọn từng bài hoặc chọn tất cả, rồi gửi yêu cầu hoàn thành theo thứ tự.
+K12 Video Runner mở một sidebar ngay trong Chrome để người dùng chọn các bài học đang hiển thị trên trang K12. Sidebar quét các dòng bài học trong module danh sách như `#listingModule3` (gồm tên bài và tiến độ), cho phép tìm kiếm, chọn từng bài hoặc chọn tất cả, rồi gửi yêu cầu hoàn thành theo thứ tự.
 
-Khi đang ở trang bài học và đã đăng nhập hợp lệ, tiện ích tự đọc các thông tin cần thiết từ URL và HTML của từng bài, gồm coursewareId, lessonId, courseSiteId, coursewareType, site, securityToken và các tham số options liên quan. Courseware thường dùng API `Courseware/markComplete`; video tiếp tục dùng API hoàn tất video. Mỗi yêu cầu được gửi bằng phiên đăng nhập hiện tại sau khi người dùng chọn bài và bấm nút hoàn thành.
+Với bài lấy từ danh sách, khi người dùng bấm hoàn thành, tiện ích gửi lessonId tới API `Lesson/learn` để lấy liên kết chuẩn của bài, rồi đọc các thông tin cần thiết từ HTML, gồm coursewareId, lessonId, courseSiteId, coursewareType, site, securityToken và các tham số options liên quan. Courseware thường dùng API `Courseware/markComplete`; video tiếp tục dùng API hoàn tất video. Các yêu cầu dùng phiên đăng nhập hiện tại và chỉ được gửi sau khi người dùng chọn bài, bấm nút hoàn thành.
 
 Trên từng trang bài học, người dùng vẫn có thể dùng nút nổi `Hoàn thành bài` một lần. Tab `Quản lý` trong sidebar cho phép bật/tắt nút nổi và mở trang quản lý extension của Chrome.
 

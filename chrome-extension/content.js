@@ -13,7 +13,8 @@
         historyPatched: false,
         confirmedVideoPage: false,
         confirmedUrl: '',
-        guardTimer: null
+        guardTimer: null,
+        quickButtonEnabled: true
     };
 
     function isCoursewarePageUrl() {
@@ -21,17 +22,17 @@
             && SUPPORTED_PATHNAME.test(location.pathname);
     }
 
-    function hasVideoElement() {
+    function hasVideoElement(sourceDocument = document) {
         return Boolean(
-            document.querySelector(
+            sourceDocument.querySelector(
                 '#video-upload, .video-loadDetail video, video source[type^="video/"], .video-loadDetail'
             )
         );
     }
 
-    function hasVideoScriptMarker() {
+    function hasVideoScriptMarker(sourceDocument = document) {
         try {
-            return getInlineScriptSource().includes('LMS.Learning.Lesson.Courseware.Video');
+            return getInlineScriptSource(sourceDocument).includes('LMS.Learning.Lesson.Courseware.Video');
         } catch (_) {
             return false;
         }
@@ -59,12 +60,16 @@
         return false;
     }
 
-    function getQueryValue(name) {
-        return new URLSearchParams(location.search).get(name) || '';
+    function getQueryValue(name, pageUrl = location.href) {
+        try {
+            return new URL(pageUrl, location.href).searchParams.get(name) || '';
+        } catch (_) {
+            return '';
+        }
     }
 
-    function getInlineScriptSource() {
-        return Array.from(document.scripts, (script) => script.textContent || '').join('\n');
+    function getInlineScriptSource(sourceDocument = document) {
+        return Array.from(sourceDocument.scripts, (script) => script.textContent || '').join('\n');
     }
 
     function findObjectEnd(source, startIndex) {
@@ -201,9 +206,9 @@
         return /^Courseware\./i.test(type) ? type : `Courseware.${type}`;
     }
 
-    function getCoursewareType(scriptSource) {
-        const explicitType = getQueryValue('coursewareType')
-            || getQueryValue('options[coursewareType]')
+    function getCoursewareType(scriptSource, sourceDocument, pageUrl) {
+        const explicitType = getQueryValue('coursewareType', pageUrl)
+            || getQueryValue('options[coursewareType]', pageUrl)
             || findNamedValue('coursewareType', scriptSource)
             || findNamedValue('courseware_type', scriptSource);
 
@@ -217,13 +222,13 @@
             return `Courseware.${typeMarker[1]}`;
         }
 
-        const domType = document.querySelector('[data-courseware-type]')?.getAttribute('data-courseware-type');
+        const domType = sourceDocument.querySelector('[data-courseware-type]')?.getAttribute('data-courseware-type');
 
         if (domType) {
             return normalizeCoursewareType(domType);
         }
 
-        const hasPdfViewer = Boolean(document.querySelector(
+        const hasPdfViewer = Boolean(sourceDocument.querySelector(
             'embed[type="application/pdf"], object[type="application/pdf"], iframe[src*=".pdf" i]'
         ));
         const scriptReferencesPdf = /Courseware\.PDF|(?:^|[\/\s"'`])[^\s"'`]+\.pdf(?:[?#\s"'`]|$)/i.test(scriptSource);
@@ -231,24 +236,27 @@
         return hasPdfViewer || scriptReferencesPdf ? 'Courseware.PDF' : '';
     }
 
-    function extractPayload() {
-        const scriptSource = getInlineScriptSource();
+    function extractPayloadFromPage(pageUrl, sourceDocument) {
+        const parsedUrl = new URL(pageUrl, location.href);
+        const scriptSource = getInlineScriptSource(sourceDocument);
         const videoConfigBlock = extractVideoConfigBlock(scriptSource);
         const primarySource = videoConfigBlock || scriptSource;
-        const lessonMatch = location.pathname.match(SUPPORTED_PATHNAME);
+        const lessonMatch = parsedUrl.pathname.match(SUPPORTED_PATHNAME);
         const lessonId = lessonMatch ? lessonMatch[0].split('/').pop() : findNamedValue('lessonId', scriptSource);
-        const coursewareId = getQueryValue('coursewareId') || findNamedValue('coursewareId', scriptSource);
-        const courseSiteId = getQueryValue('courseSiteId')
-            || getQueryValue('options[courseSiteId]')
+        const coursewareId = getQueryValue('coursewareId', parsedUrl.href) || findNamedValue('coursewareId', scriptSource);
+        const courseSiteId = getQueryValue('courseSiteId', parsedUrl.href)
+            || getQueryValue('options[courseSiteId]', parsedUrl.href)
             || findNamedValue('courseSiteId', scriptSource);
-        const site = getQueryValue('site') || findNamedValue('site', scriptSource);
+        const site = getQueryValue('site', parsedUrl.href) || findNamedValue('site', scriptSource);
         const securityToken = findNamedValue('securityToken', scriptSource);
-        const coursewareType = getCoursewareType(scriptSource);
-        const getOption = (name) => getQueryValue(name)
-            || getQueryValue(`options[${name}]`)
+        const coursewareType = getCoursewareType(scriptSource, sourceDocument, parsedUrl.href);
+        const getOption = (name) => getQueryValue(name, parsedUrl.href)
+            || getQueryValue(`options[${name}]`, parsedUrl.href)
             || findNamedValue(name, scriptSource);
 
-        const isVideoCourseware = detectVideoPage() || /^Courseware\.Video$/i.test(coursewareType);
+        const isVideoCourseware = hasVideoElement(sourceDocument)
+            || hasVideoScriptMarker(sourceDocument)
+            || /^Courseware\.Video$/i.test(coursewareType);
 
         if (isVideoCourseware) {
             const payload = {
@@ -307,6 +315,260 @@
             });
 
         return { kind: 'courseware', payload, missingFields };
+    }
+
+    function extractPayload() {
+        return extractPayloadFromPage(location.href, document);
+    }
+
+    function getElementLessonUrl(element) {
+        const sources = [
+            element.getAttribute('href'),
+            element.getAttribute('data-href'),
+            element.getAttribute('data-url'),
+            element.getAttribute('onclick')
+        ].filter(Boolean);
+
+        for (const source of sources) {
+            try {
+                const directUrl = new URL(source, location.href);
+                if (directUrl.origin === location.origin && SUPPORTED_PATHNAME.test(directUrl.pathname)) {
+                    return directUrl;
+                }
+            } catch (_) {
+                // The value may be a JavaScript handler containing a URL instead of a URL itself.
+            }
+
+            const routeMatch = source.match(/(?:https?:\/\/hcm\.k12online\.vn)?\/\d+\/page\/LMS\/Lesson\/Courseware\/learn\/[^"'`\s)]+/i);
+            if (routeMatch) {
+                try {
+                    const parsedUrl = new URL(routeMatch[0], location.href);
+                    if (parsedUrl.origin === location.origin && SUPPORTED_PATHNAME.test(parsedUrl.pathname)) {
+                        return parsedUrl;
+                    }
+                } catch (_) {
+                    // Ignore malformed link text and continue checking other attributes.
+                }
+            }
+        }
+
+        return null;
+    }
+
+    function getLessonCandidate(element) {
+        const row = element.closest(
+            '[data-lesson-id], [data-courseware-id], tr, li, [class*="lesson"], [class*="courseware"], [class*="item"]'
+        ) || element;
+        const nestedLink = row.querySelector('a[href], [data-href], [data-url], [onclick]');
+        const pageUrl = getElementLessonUrl(element) || (nestedLink ? getElementLessonUrl(nestedLink) : null);
+        const rowLessonId = row.getAttribute('data-lesson-id') || '';
+        const rowCoursewareId = row.getAttribute('data-courseware-id') || '';
+
+        if (!pageUrl && !rowLessonId) {
+            return null;
+        }
+
+        const candidateUrl = pageUrl || new URL(location.href);
+        if (!pageUrl) {
+            const portalId = location.pathname.match(/^\/(\d+)\//)?.[1];
+            if (!portalId) {
+                return null;
+            }
+            candidateUrl.pathname = `/${portalId}/page/LMS/Lesson/Courseware/learn/${encodeURIComponent(rowLessonId)}`;
+        }
+
+        const params = candidateUrl.searchParams;
+        const rowValues = {
+            coursewareId: rowCoursewareId,
+            courseSiteId: row.getAttribute('data-course-site-id') || '',
+            site: row.getAttribute('data-site') || '',
+            coursewareType: row.getAttribute('data-courseware-type') || '',
+            scheduleId: row.getAttribute('data-schedule-id') || '',
+            courseId: row.getAttribute('data-course-id') || '',
+            classroomId: row.getAttribute('data-classroom-id') || '',
+            contentSharingId: row.getAttribute('data-content-sharing-id') || '',
+            trainingModuleId: row.getAttribute('data-training-module-id') || ''
+        };
+
+        Object.entries(rowValues).forEach(([name, value]) => {
+            if (value && !params.has(name)) {
+                params.set(name, value);
+            }
+        });
+
+        if (!params.has('courseSiteId')) {
+            const courseSiteId = getQueryValue('courseSiteId') || getQueryValue('site');
+            if (courseSiteId) {
+                params.set('courseSiteId', courseSiteId);
+            }
+        }
+        if (!params.has('site')) {
+            const site = getQueryValue('site');
+            if (site) {
+                params.set('site', site);
+            }
+        }
+        if (!params.has('coursewareId') && rowCoursewareId) {
+            params.set('coursewareId', rowCoursewareId);
+        }
+
+        const lessonId = pageUrl
+            ? candidateUrl.pathname.split('/').pop()
+            : rowLessonId;
+        const coursewareId = params.get('coursewareId') || rowCoursewareId;
+        const courseSiteId = params.get('courseSiteId') || '';
+        const site = params.get('site') || '';
+        const key = `${lessonId}:${coursewareId || ''}:${courseSiteId}:${site}`;
+        const labelContainer = element.closest('tr, li, [class*="lesson"], [class*="courseware"], [class*="item"]') || element;
+        const titleText = element.getAttribute('title')
+            || element.textContent
+            || labelContainer.textContent
+            || `Bài học ${lessonId}`;
+        const title = titleText.replace(/\s+/g, ' ').trim().slice(0, 140) || `Bài học ${lessonId}`;
+
+        return {
+            key,
+            title,
+            href: candidateUrl.href,
+            lessonId,
+            coursewareId,
+            courseSiteId,
+            site,
+            coursewareType: params.get('coursewareType') || ''
+        };
+    }
+
+    function getLessonCandidates() {
+        const lessons = new Map();
+
+        if (isCoursewarePageUrl()) {
+            const currentPage = new URL(location.href);
+            const lessonId = currentPage.pathname.split('/').pop();
+            const coursewareId = currentPage.searchParams.get('coursewareId') || '';
+            const courseSiteId = currentPage.searchParams.get('courseSiteId') || '';
+            const site = currentPage.searchParams.get('site') || '';
+            const currentKey = `${lessonId}:${coursewareId}:${courseSiteId}:${site}`;
+            lessons.set(currentKey, {
+                key: currentKey,
+                title: document.title || `Bài học ${lessonId}`,
+                href: currentPage.href,
+                lessonId,
+                coursewareId,
+                courseSiteId,
+                site,
+                coursewareType: currentPage.searchParams.get('coursewareType') || ''
+            });
+        }
+
+        const primaryList = document.querySelector('#listingModule3');
+        const listingModules = primaryList
+            ? [primaryList]
+            : Array.from(document.querySelectorAll('[id^="listingModule"]'));
+        const roots = listingModules.length > 0 ? listingModules : [document.body];
+        const elements = new Set();
+
+        roots.forEach((root) => {
+            root.querySelectorAll('a[href], [data-href], [data-url], [onclick], [data-lesson-id], [data-courseware-id]').forEach((element) => {
+                elements.add(element);
+            });
+        });
+
+        elements.forEach((element) => {
+            const candidate = getLessonCandidate(element);
+            if (candidate && !lessons.has(candidate.key)) {
+                lessons.set(candidate.key, candidate);
+            }
+        });
+
+        return Array.from(lessons.values());
+    }
+
+    function fillCandidatePayload(request, candidate) {
+        const query = new URL(candidate.href, location.href).searchParams;
+        const candidateValue = (name) => candidate[name] || query.get(name) || '';
+
+        if (request.kind === 'video') {
+            request.payload.courseSiteId ||= candidateValue('courseSiteId');
+            request.payload.site ||= candidateValue('site');
+            request.missingFields = ['courseSiteId', 'courseResultId', 'site', 'securityToken']
+                .filter((field) => !request.payload[field]);
+            return request;
+        }
+
+        request.payload.coursewareId ||= candidateValue('coursewareId');
+        request.payload['options[coursewareId]'] = request.payload.coursewareId;
+        request.payload['options[courseSiteId]'] ||= candidateValue('courseSiteId');
+        request.payload['options[coursewareType]'] ||= candidateValue('coursewareType');
+        request.payload.site ||= candidateValue('site');
+        request.payload.lessonId ||= candidate.lessonId || '';
+        request.missingFields = ['coursewareId', 'lessonId', 'options[courseSiteId]', 'options[coursewareType]', 'site', 'securityToken']
+            .filter((field) => !request.payload[field]);
+        return request;
+    }
+
+    async function getCandidatePayload(candidate) {
+        const lessonUrl = new URL(candidate.href, location.href);
+        if (lessonUrl.origin !== location.origin || !SUPPORTED_PATHNAME.test(lessonUrl.pathname)) {
+            return { ok: false, message: 'Liên kết bài học không hợp lệ.' };
+        }
+
+        let pageUrl = lessonUrl.href;
+        let sourceDocument = document;
+
+        if (pageUrl !== location.href) {
+            const pageResponse = await fetch(pageUrl, {
+                method: 'GET',
+                credentials: 'include',
+                headers: { Accept: 'text/html,application/xhtml+xml,*/*' }
+            });
+
+            if (!pageResponse.ok) {
+                return { ok: false, message: `Không tải được bài học (HTTP ${pageResponse.status}).` };
+            }
+
+            pageUrl = pageResponse.url || pageUrl;
+            const responseUrl = new URL(pageUrl, location.href);
+            if (responseUrl.origin !== location.origin || !SUPPORTED_PATHNAME.test(responseUrl.pathname)) {
+                return { ok: false, message: 'Trang bài học chuyển hướng hoặc phiên đăng nhập đã hết hạn.' };
+            }
+
+            const html = await pageResponse.text();
+            sourceDocument = new DOMParser().parseFromString(html, 'text/html');
+        }
+
+        const request = fillCandidatePayload(extractPayloadFromPage(pageUrl, sourceDocument), candidate);
+        if (request.missingFields.length > 0) {
+            return { ok: false, message: `Thiếu dữ liệu: ${request.missingFields.join(', ')}` };
+        }
+
+        return { ok: true, request };
+    }
+
+    async function completeLessonFromSidebar(candidate) {
+        if (state.isRunning) {
+            return { ok: false, message: 'Một yêu cầu khác đang chạy.' };
+        }
+
+        state.isRunning = true;
+        try {
+            const prepared = await getCandidatePayload(candidate);
+            if (!prepared.ok) {
+                return prepared;
+            }
+
+            const request = prepared.request;
+            const result = request.kind === 'video'
+                ? await submitVideoCompletion(request.payload)
+                : await submitCoursewareCompletion(request.payload);
+
+            return result.ok
+                ? { ok: true, message: request.kind === 'video' ? 'Video đã hoàn tất.' : 'Bài học đã được đánh dấu hoàn thành.' }
+                : { ok: false, message: result.message };
+        } catch (error) {
+            return { ok: false, message: error instanceof Error ? error.message : 'Không gửi được yêu cầu.' };
+        } finally {
+            state.isRunning = false;
+        }
     }
 
     function createRequestBody(payload) {
@@ -576,7 +838,7 @@
     }
 
     function ensureUi() {
-        if (!isCoursewarePageUrl()) {
+        if (!state.quickButtonEnabled || !isCoursewarePageUrl()) {
             state.confirmedVideoPage = false;
             state.confirmedUrl = '';
             removeUi();
@@ -595,8 +857,9 @@
         }
 
         state.guardTimer = setInterval(() => {
-            if (!isCoursewarePageUrl()) {
+            if (!state.quickButtonEnabled || !isCoursewarePageUrl()) {
                 stopGuard();
+                removeUi();
                 return;
             }
 
@@ -680,6 +943,30 @@
 
     function setupMessageListener() {
         chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+            if (message.action === 'getLessonCandidates') {
+                const lessons = getLessonCandidates();
+                sendResponse({
+                    ok: true,
+                    lessons,
+                    message: lessons.length > 0
+                        ? `${lessons.length} bài học tìm thấy trên trang.`
+                        : 'Trang này chưa có liên kết bài học courseware để chọn.'
+                });
+                return true;
+            }
+
+            if (message.action === 'completeLessonFromSidebar') {
+                completeLessonFromSidebar(message.candidate).then(sendResponse);
+                return true;
+            }
+
+            if (message.action === 'setQuickButtonEnabled') {
+                state.quickButtonEnabled = message.enabled !== false;
+                ensureUi();
+                sendResponse({ ok: true, enabled: state.quickButtonEnabled });
+                return true;
+            }
+
             if (message.action === 'getStatus') {
                 sendResponse({
                     isCoursewarePage: isCoursewarePageUrl(),
@@ -693,8 +980,7 @@
             if (message.action === 'runProcess') {
                 if (isCoursewarePageUrl()) {
                     detectVideoPage();
-                    createUi();
-                    startGuard();
+                    ensureUi();
                 }
 
                 runProcessFromPopup(sendResponse);
@@ -756,7 +1042,18 @@
         patchHistory();
         observeDomChanges();
         setupMessageListener();
-        ensureUi();
+        chrome.storage.onChanged.addListener((changes, areaName) => {
+            if (areaName === 'local' && changes.k12QuickButtonEnabled) {
+                state.quickButtonEnabled = changes.k12QuickButtonEnabled.newValue !== false;
+                ensureUi();
+            }
+        });
+        chrome.storage.local.get({ k12QuickButtonEnabled: true })
+            .then((settings) => {
+                state.quickButtonEnabled = settings.k12QuickButtonEnabled !== false;
+                ensureUi();
+            })
+            .catch(() => ensureUi());
     }
 
     if (document.readyState === 'loading') {

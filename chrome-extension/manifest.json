@@ -1,11 +1,21 @@
 {
   "manifest_version": 3,
+  "minimum_chrome_version": "114",
   "name": "K12 Video Runner",
-  "description": "Thêm nút hoàn thành bài học trên trang courseware của hcm.k12online.vn.",
-  "version": "1.1.0",
+  "description": "Chọn và đánh dấu hoàn thành bài học K12 từ sidebar của Chrome.",
+  "version": "1.2.0",
   "action": {
-    "default_title": "K12 Video Runner",
-    "default_popup": "popup.html"
+    "default_title": "K12 Video Runner"
+  },
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "permissions": [
+    "sidePanel",
+    "storage"
   },
   "content_scripts": [
     {

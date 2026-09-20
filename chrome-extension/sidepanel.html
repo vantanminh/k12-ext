@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>K12 Video Runner</title>
+    <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="brand-mark" aria-hidden="true">K12</div>
+            <div class="brand-copy">
+                <h1>K12 Video Runner</h1>
+                <p id="page-context">Đang kết nối trang K12...</p>
+            </div>
+            <button id="refresh-btn" class="icon-button" type="button" title="Quét lại bài học" aria-label="Quét lại bài học">
+                <span aria-hidden="true">↻</span>
+            </button>
+        </header>
+
+        <nav class="tabs" aria-label="Điều hướng sidebar">
+            <button class="tab active" id="lessons-tab" type="button" aria-selected="true">Chọn bài</button>
+            <button class="tab" id="manage-tab" type="button" aria-selected="false">Quản lý</button>
+        </nav>
+
+        <main>
+            <section id="lessons-view" class="view active" aria-labelledby="lessons-tab">
+                <div class="section-heading">
+                    <div>
+                        <h2>Bài học trên trang</h2>
+                        <p id="scan-status">Quét danh sách bài học hiện tại.</p>
+                    </div>
+                </div>
+
+                <label class="search-box" for="lesson-search">
+                    <span aria-hidden="true">⌕</span>
+                    <input id="lesson-search" type="search" placeholder="Tìm bài học" autocomplete="off">
+                </label>
+
+                <div class="selection-toolbar">
+                    <label class="select-all-label">
+                        <input id="select-all" type="checkbox">
+                        <span>Chọn tất cả</span>
+                    </label>
+                    <span id="selected-count" class="selected-count">0 đã chọn</span>
+                </div>
+
+                <div id="lesson-list" class="lesson-list" aria-live="polite"></div>
+
+                <div id="empty-state" class="empty-state" hidden>
+                    <div class="empty-icon" aria-hidden="true">▤</div>
+                    <h3>Chưa tìm thấy bài học</h3>
+                    <p>Mở trang danh sách bài học K12 có các liên kết vào bài, rồi quét lại.</p>
+                </div>
+
+                <div class="bulk-footer">
+                    <button id="complete-selected" class="primary-button" type="button" disabled>
+                        Hoàn thành bài đã chọn
+                    </button>
+                    <div id="bulk-status" class="bulk-status" aria-live="polite"></div>
+                </div>
+            </section>
+
+            <section id="manage-view" class="view" aria-labelledby="manage-tab" hidden>
+                <div class="section-heading">
+                    <div>
+                        <h2>Quản lý extension</h2>
+                        <p>Tùy chỉnh cách K12 Video Runner hoạt động trên trang.</p>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <label class="setting-row" for="quick-button-toggle">
+                        <span class="setting-copy">
+                            <strong>Nút hoàn thành nhanh</strong>
+                            <span>Hiện nút nổi trên trang bài học K12.</span>
+                        </span>
+                        <span class="switch">
+                            <input id="quick-button-toggle" type="checkbox">
+                            <span class="switch-track" aria-hidden="true"></span>
+                        </span>
+                    </label>
+                </div>
+
+                <div class="settings-card extension-info">
+                    <div class="info-row">
+                        <span>Phiên bản</span>
+                        <strong id="extension-version">—</strong>
+                    </div>
+                    <button id="open-extension-manager" class="secondary-button" type="button">
+                        Mở quản lý extension của Chrome
+                    </button>
+                </div>
+
+                <p id="settings-status" class="settings-status" aria-live="polite"></p>
+            </section>
+        </main>
+    </div>
+    <script src="sidepanel.js"></script>
+</body>
+</html>

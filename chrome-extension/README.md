@@ -1,6 +1,6 @@
 # K12 Video Runner
 
-Chrome extension này hiển thị nút `Hoàn thành bài` trên trang bài học courseware của `https://hcm.k12online.vn/*`.
+Chrome extension này có sidebar Chrome để chọn nhiều bài học đang hiển thị trên trang K12 và đánh dấu hoàn thành. Nút `Hoàn thành bài` nổi trên từng trang bài học vẫn có thể bật hoặc tắt trong mục Quản lý.
 
 ## Tải bản đóng gói sẵn từ GitHub Release
 
@@ -43,6 +43,10 @@ Extension này chưa được đưa lên Chrome Web Store, nên cần cài thủ
 - `manifest.json`
 - `content.js`
 - `styles.css`
+- `service-worker.js`
+- `sidepanel.html`
+- `sidepanel.css`
+- `sidepanel.js`
 - `README.md`
 
 Thư mục cần chọn khi cài là:
@@ -84,7 +88,7 @@ Nếu không có lỗi, bạn sẽ thấy extension `K12 Video Runner` xuất hi
 Sau khi load xong, Chrome thường hiển thị một thẻ extension có:
 
 - Tên extension: `K12 Video Runner`
-- Version: `1.1.0`
+- Version: `1.2.0`
 - Trạng thái đang bật
 
 Nếu Chrome báo lỗi ở file `manifest.json` hoặc `content.js`, cần sửa lỗi rồi quay lại trang `chrome://extensions` và bấm `Reload` trên extension đó.
@@ -95,22 +99,22 @@ Bước này không bắt buộc vì extension chạy trực tiếp trên trang,
 
 1. Bấm biểu tượng `Extensions` ở bên phải thanh địa chỉ Chrome.
 2. Tìm `K12 Video Runner`.
-3. Bấm biểu tượng ghim để pin nó ra thanh toolbar.
+3. Bấm biểu tượng ghim để pin nó ra thanh toolbar. Bấm icon K12 Video Runner để mở sidebar.
 
 ### 7. Sử dụng trên trang K12
 
 1. Đăng nhập vào hệ thống `https://hcm.k12online.vn`.
-2. Mở trang bài học, ví dụ dạng:
+2. Mở trang danh sách bài học hoặc một bài học, ví dụ dạng:
 
-	`https://hcm.k12online.vn/79000729/page/LMS/Lesson/Courseware/learn/...`
+	`https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/teacherList?...`
 
 3. Chờ trang tải xong.
-4. Extension sẽ chèn nút `Hoàn thành bài` trên trang.
-5. Bấm nút `Hoàn thành bài` một lần.
+4. Bấm icon K12 Video Runner trên thanh công cụ để mở sidebar.
+5. Trong tab `Chọn bài`, chọn các bài muốn đánh dấu rồi bấm `Hoàn thành bài đã chọn`.
 
-Với courseware không phải video, extension gửi yêu cầu `Courseware/markComplete` bằng phiên đăng nhập hiện tại. Với video, extension tiếp tục dùng API hoàn tất video hiện có.
+Sidebar quét các liên kết bài học trong danh sách hiện tại, ưu tiên module `#listingModule3`. Với bài học đang mở, nút nổi `Hoàn thành bài` vẫn thao tác một lần như trước. Trong tab `Quản lý`, có thể bật/tắt nút nổi hoặc mở trang quản lý extension của Chrome.
 
-Khi server xác nhận thành công, giao diện sẽ báo bài học đã hoàn thành. Nếu request lỗi, extension hiển thị nội dung lỗi ngay cạnh nút.
+Với courseware không phải video, extension gửi yêu cầu `Courseware/markComplete` bằng phiên đăng nhập hiện tại. Với video, extension tiếp tục dùng API hoàn tất video hiện có. Sidebar hiển thị tiến độ và kết quả cho từng bài.
 
 ### 8. Khi sửa code extension và muốn cập nhật
 
@@ -130,9 +134,9 @@ Vì đây là bản cài bằng `Load unpacked`, mỗi lần bạn sửa code th
 
 ### 10. Lỗi thường gặp
 
-`Không thấy nút Hoàn thành bài`:
+`Không thấy bài học trong sidebar`:
 
-- Bạn chưa mở đúng URL trang bài học courseware.
+- Trang hiện tại chưa có liên kết mở bài học courseware trong danh sách đang hiển thị.
 - Trang chưa tải xong hoàn toàn.
 - Bạn đã load nhầm thư mục, không phải `d:\code\k12-ext\chrome-extension`.
 - Extension đang bị tắt trong `chrome://extensions`.
@@ -154,14 +158,16 @@ Vì đây là bản cài bằng `Load unpacked`, mỗi lần bạn sửa code th
 2. Bật `Developer mode`.
 3. Bấm `Load unpacked`.
 4. Chọn thư mục `d:\code\k12-ext\chrome-extension`.
-5. Mở trang bài học K12 đã đăng nhập.
-6. Bấm `Hoàn thành bài`.
+5. Mở trang danh sách bài học K12 đã đăng nhập.
+6. Bấm icon extension, chọn bài trong sidebar và bấm `Hoàn thành bài đã chọn`.
 
 ## Extension làm gì
 
-- Chỉ chạy trên trang có URL dạng `https://hcm.k12online.vn/<portal>/page/LMS/Lesson/Courseware/learn/<lessonId>`.
+- Chỉ đọc nội dung trên `hcm.k12online.vn`; sidebar quét danh sách bài học đang hiển thị, gồm module `#listingModule3` khi có.
 - Tự đọc `coursewareId`, `lessonId`, `courseSiteId`, `coursewareType`, `site`, `securityToken` và các giá trị `options[...]` từ URL/HTML/script của trang.
 - Gửi `POST` tới `Courseware/markComplete` cho courseware thường bằng phiên đăng nhập hiện tại; video tiếp tục dùng API hoàn tất video.
+- Có mục Quản lý để bật/tắt nút nổi trên trang và mở trang quản lý Chrome.
+- Chỉ gửi yêu cầu cho các bài người dùng đã chọn và bấm hoàn thành.
 - Không lưu hoặc hardcode cookie và token đăng nhập.
 - Nếu phản hồi khác hoặc request lỗi, trạng thái lỗi sẽ hiển thị ngay cạnh nút.
 

@@ -16,7 +16,7 @@
   "permissions": [
     "sidePanel",
     "storage"
-  },
+  ],
   "content_scripts": [
     {
       "matches": [

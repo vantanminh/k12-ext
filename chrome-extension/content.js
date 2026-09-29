@@ -3,9 +3,11 @@
     const BUTTON_ID = 'k12ext-run-button';
     const STATUS_ID = 'k12ext-status';
     const SUPPORTED_PATHNAME = /^\/\d+\/page\/LMS\/Lesson\/Courseware\/learn\/[^/?#]+$/i;
+    const LESSON_ENTRY_PATHNAME = /^\/\d+\/page\/LMS\/Lesson\/learn\/[^/?#]+$/i;
     const VIDEO_COMPLETE_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Learning/CourseResult/Video/complete';
     const LESSON_LAUNCH_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Learning/Lesson/learn';
     const MARK_COMPLETE_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Learning/Courseware/markComplete';
+    const COMMENT_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Social/Comment/edit';
     const GUARD_INTERVAL_MS = 2000;
 
     const state = {
@@ -258,6 +260,15 @@
         const isVideoCourseware = hasVideoElement(sourceDocument)
             || hasVideoScriptMarker(sourceDocument)
             || /^Courseware\.Video$/i.test(coursewareType);
+        const commentContext = {
+            objectType: coursewareType || (isVideoCourseware ? 'Courseware.Video' : ''),
+            objectId: coursewareId,
+            courseId: getOption('courseId'),
+            scheduleId: getOption('scheduleId'),
+            lessonId,
+            site,
+            securityToken
+        };
 
         if (isVideoCourseware) {
             const payload = {
@@ -289,7 +300,7 @@
                 missingFields.push('securityToken');
             }
 
-            return { kind: 'video', payload, missingFields };
+            return { kind: 'video', payload, commentContext, missingFields };
         }
 
         const payload = {
@@ -315,7 +326,7 @@
                 }
             });
 
-        return { kind: 'courseware', payload, missingFields };
+        return { kind: 'courseware', payload, commentContext, missingFields };
     }
 
     function extractPayload() {
@@ -547,7 +558,8 @@
         }
 
         const lessonUrl = new URL(data.link, location.href);
-        if (lessonUrl.origin !== location.origin || !SUPPORTED_PATHNAME.test(lessonUrl.pathname)) {
+        if (lessonUrl.origin !== location.origin
+            || (!SUPPORTED_PATHNAME.test(lessonUrl.pathname) && !LESSON_ENTRY_PATHNAME.test(lessonUrl.pathname))) {
             return { ok: false, message: 'Liên kết bài học hệ thống trả về không hợp lệ.' };
         }
 
@@ -557,6 +569,16 @@
     function fillCandidatePayload(request, candidate) {
         const query = new URL(candidate.href, location.href).searchParams;
         const candidateValue = (name) => candidate[name] || query.get(name) || '';
+        const commentContext = request.commentContext || {};
+        commentContext.objectType ||= candidateValue('coursewareType')
+            || (request.kind === 'video' ? 'Courseware.Video' : '');
+        commentContext.objectId ||= candidateValue('coursewareId') || request.payload.coursewareId || '';
+        commentContext.courseId ||= request.payload['options[courseId]'] || candidateValue('courseId');
+        commentContext.scheduleId ||= request.payload['options[scheduleId]'] || candidateValue('scheduleId');
+        commentContext.lessonId ||= candidate.lessonId || '';
+        commentContext.site ||= request.payload.site || candidateValue('site');
+        commentContext.securityToken ||= request.payload.securityToken || '';
+        request.commentContext = commentContext;
 
         if (request.kind === 'video') {
             request.payload.courseSiteId ||= candidateValue('courseSiteId');
@@ -588,7 +610,10 @@
         }
 
         const lessonUrl = new URL(candidateHref, location.href);
-        if (lessonUrl.origin !== location.origin || !SUPPORTED_PATHNAME.test(lessonUrl.pathname)) {
+        // Lesson/learn is the entry URL returned by K12; fetching it follows the
+        // redirect to Courseware/learn, which is validated below before parsing.
+        if (lessonUrl.origin !== location.origin
+            || (!SUPPORTED_PATHNAME.test(lessonUrl.pathname) && !LESSON_ENTRY_PATHNAME.test(lessonUrl.pathname))) {
             return { ok: false, message: 'Liên kết bài học không hợp lệ.' };
         }
 
@@ -636,14 +661,7 @@
                 return prepared;
             }
 
-            const request = prepared.request;
-            const result = request.kind === 'video'
-                ? await submitVideoCompletion(request.payload)
-                : await submitCoursewareCompletion(request.payload);
-
-            return result.ok
-                ? { ok: true, message: request.kind === 'video' ? 'Video đã hoàn tất.' : 'Bài học đã được đánh dấu hoàn thành.' }
-                : { ok: false, message: result.message };
+            return await runCompletionWorkflow(prepared.request);
         } catch (error) {
             return { ok: false, message: error instanceof Error ? error.message : 'Không gửi được yêu cầu.' };
         } finally {
@@ -794,6 +812,119 @@
         return { ok: true, data };
     }
 
+    async function submitAutomaticComment(commentContext) {
+        const settings = await chrome.storage.local.get({
+            k12AutoCommentEnabled: false,
+            k12AutoCommentProfile: { name: '', className: '', studentId: '' }
+        });
+
+        if (settings.k12AutoCommentEnabled !== true) {
+            return { ok: true, commented: false };
+        }
+
+        const profile = settings.k12AutoCommentProfile || {};
+        const name = String(profile.name || '').trim();
+        const className = String(profile.className || '').trim();
+        const studentId = String(profile.studentId || '').trim();
+
+        if (!name || !className || !studentId) {
+            return {
+                ok: false,
+                message: 'Thiếu Tên, Lớp hoặc Mã số trong mục Quản lý.'
+            };
+        }
+
+        const context = commentContext || {};
+        if (!context.objectType || !context.objectId || !context.lessonId || !context.site || !context.securityToken) {
+            return { ok: false, message: 'Thiếu dữ liệu bài học để gửi bình luận.' };
+        }
+
+        const payload = {
+            'fields[objectType]': context.objectType,
+            'fields[objectId]': context.objectId,
+            'fields[courseId]': context.courseId || '',
+            'fields[scheduleId]': context.scheduleId || '',
+            'fields[lessonId]': context.lessonId,
+            'fields[title]': [name, className, studentId, 'đã xem ạ'].join(' - '),
+            site: context.site,
+            securityToken: context.securityToken
+        };
+        const response = await fetch(COMMENT_ENDPOINT, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                Accept: '*/*',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: createRequestBody(payload).toString()
+        });
+        const { rawText, data } = await parseResponse(response);
+
+        if (!response.ok) {
+            return { ok: false, message: getErrorMessage(response, data, rawText) };
+        }
+
+        if (response.redirected && !response.url.includes('/api/LMS/Social/Comment/edit')) {
+            return {
+                ok: false,
+                message: 'Phiên đăng nhập có thể đã hết hạn. Hãy đăng nhập lại rồi thử tiếp.'
+            };
+        }
+
+        if (data === false || data === 0) {
+            return { ok: false, message: getErrorMessage(response, data, rawText) };
+        }
+
+        if (data && typeof data === 'object') {
+            const status = data.status == null ? '' : String(data.status).toUpperCase();
+            if ((status && status !== 'SUCCESS' && status !== 'OK')
+                || data.success === false || data.ok === false || data.error) {
+                return { ok: false, message: getErrorMessage(response, data, rawText) };
+            }
+        }
+
+        return { ok: true, commented: true };
+    }
+
+    async function runCompletionWorkflow(request) {
+        const completion = request.kind === 'video'
+            ? await submitVideoCompletion(request.payload)
+            : await submitCoursewareCompletion(request.payload);
+
+        if (!completion.ok) {
+            return completion;
+        }
+
+        const completionMessage = request.kind === 'video'
+            ? 'Video đã hoàn tất. status=SUCCESS, percent=100.'
+            : 'Bài học đã được đánh dấu hoàn thành.';
+        let comment;
+        try {
+            comment = await submitAutomaticComment(request.commentContext);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Không gửi được bình luận.';
+            return {
+                ok: false,
+                completionOk: true,
+                message: completionMessage + ' Bình luận tự động chưa gửi được: ' + message
+            };
+        }
+
+        if (!comment.ok) {
+            return {
+                ok: false,
+                completionOk: true,
+                message: completionMessage + ' Bình luận tự động chưa gửi được: ' + comment.message
+            };
+        }
+
+        return {
+            ok: true,
+            message: completionMessage + (comment.commented ? ' Đã gửi bình luận tự động.' : '')
+        };
+    }
+
     function getUiElements() {
         return {
             root: document.getElementById(UI_ID),
@@ -845,17 +976,10 @@
         setStatus('Đang gửi yêu cầu hoàn thành bài học...', 'running');
 
         try {
-            const result = request.kind === 'video'
-                ? await submitVideoCompletion(request.payload)
-                : await submitCoursewareCompletion(request.payload);
+            const result = await runCompletionWorkflow(request);
 
             if (result.ok) {
-                setStatus(
-                    request.kind === 'video'
-                        ? 'Video đã hoàn tất. Server trả về status=SUCCESS và percent=100.'
-                        : 'Bài học đã được đánh dấu hoàn thành.',
-                    'success'
-                );
+                setStatus(result.message, 'success');
                 setButtonState('Hoàn thành lại', false);
                 return;
             }
@@ -1092,14 +1216,10 @@
         setStatus('Đang gửi yêu cầu hoàn thành bài học...', 'running');
 
         try {
-            const result = request.kind === 'video'
-                ? await submitVideoCompletion(request.payload)
-                : await submitCoursewareCompletion(request.payload);
+            const result = await runCompletionWorkflow(request);
 
             if (result.ok) {
-                const message = request.kind === 'video'
-                    ? 'Video đã hoàn tất. status=SUCCESS, percent=100.'
-                    : 'Bài học đã được đánh dấu hoàn thành.';
+                const message = result.message;
                 setStatus(message, 'success');
                 setButtonState('Hoàn thành lại', false);
                 sendResponse({ ok: true, message });

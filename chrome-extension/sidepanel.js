@@ -1,6 +1,8 @@
 document.addEventListener('DOMContentLoaded', init);
 
 const QUICK_BUTTON_KEY = 'k12QuickButtonEnabled';
+const AUTO_COMMENT_ENABLED_KEY = 'k12AutoCommentEnabled';
+const AUTO_COMMENT_PROFILE_KEY = 'k12AutoCommentProfile';
 const state = {
     tabId: null,
     pageUrl: '',
@@ -8,7 +10,9 @@ const state = {
     selected: new Set(),
     results: new Map(),
     processing: false,
-    quickButtonEnabled: true
+    quickButtonEnabled: true,
+    autoCommentEnabled: false,
+    commentProfile: { name: '', className: '', studentId: '' }
 };
 
 const elements = {
@@ -27,6 +31,11 @@ const elements = {
     completeSelected: document.getElementById('complete-selected'),
     bulkStatus: document.getElementById('bulk-status'),
     quickButtonToggle: document.getElementById('quick-button-toggle'),
+    autoCommentToggle: document.getElementById('auto-comment-toggle'),
+    commentName: document.getElementById('comment-name'),
+    commentClass: document.getElementById('comment-class'),
+    commentStudentId: document.getElementById('comment-student-id'),
+    commentPreview: document.getElementById('comment-preview'),
     extensionVersion: document.getElementById('extension-version'),
     openExtensionManager: document.getElementById('open-extension-manager'),
     settingsStatus: document.getElementById('settings-status')
@@ -41,11 +50,31 @@ async function init() {
     elements.lessonsTab.addEventListener('click', () => showView('lessons'));
     elements.manageTab.addEventListener('click', () => showView('manage'));
     elements.quickButtonToggle.addEventListener('change', updateQuickButtonSetting);
+    elements.autoCommentToggle.addEventListener('change', updateAutoCommentSetting);
+    [elements.commentName, elements.commentClass, elements.commentStudentId].forEach((input) => {
+        input.addEventListener('input', updateCommentPreview);
+        input.addEventListener('change', saveCommentProfile);
+    });
     elements.openExtensionManager.addEventListener('click', openExtensionManager);
 
-    const settings = await chrome.storage.local.get({ [QUICK_BUTTON_KEY]: true });
+    const settings = await chrome.storage.local.get({
+        [QUICK_BUTTON_KEY]: true,
+        [AUTO_COMMENT_ENABLED_KEY]: false,
+        [AUTO_COMMENT_PROFILE_KEY]: { name: '', className: '', studentId: '' }
+    });
     state.quickButtonEnabled = settings[QUICK_BUTTON_KEY] !== false;
     elements.quickButtonToggle.checked = state.quickButtonEnabled;
+    state.autoCommentEnabled = settings[AUTO_COMMENT_ENABLED_KEY] === true;
+    state.commentProfile = normalizeCommentProfile(settings[AUTO_COMMENT_PROFILE_KEY]);
+    populateCommentProfile();
+    elements.autoCommentToggle.checked = state.autoCommentEnabled;
+
+    if (state.autoCommentEnabled && !hasCompleteCommentProfile(state.commentProfile)) {
+        state.autoCommentEnabled = false;
+        elements.autoCommentToggle.checked = false;
+        await chrome.storage.local.set({ [AUTO_COMMENT_ENABLED_KEY]: false });
+        elements.settingsStatus.textContent = 'Đã tắt tự động bình luận vì cần nhập đủ Tên, Lớp và Mã số.';
+    }
 
     chrome.tabs.onActivated.addListener(() => refreshLessons());
     chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
@@ -54,9 +83,23 @@ async function init() {
         }
     });
     chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName === 'local' && changes[QUICK_BUTTON_KEY]) {
+        if (areaName !== 'local') {
+            return;
+        }
+
+        if (changes[QUICK_BUTTON_KEY]) {
             state.quickButtonEnabled = changes[QUICK_BUTTON_KEY].newValue !== false;
             elements.quickButtonToggle.checked = state.quickButtonEnabled;
+        }
+
+        if (changes[AUTO_COMMENT_ENABLED_KEY]) {
+            state.autoCommentEnabled = changes[AUTO_COMMENT_ENABLED_KEY].newValue === true;
+            elements.autoCommentToggle.checked = state.autoCommentEnabled;
+        }
+
+        if (changes[AUTO_COMMENT_PROFILE_KEY]) {
+            state.commentProfile = normalizeCommentProfile(changes[AUTO_COMMENT_PROFILE_KEY].newValue);
+            populateCommentProfile();
         }
     });
 
@@ -299,6 +342,78 @@ async function completeSelectedLessons() {
     elements.bulkStatus.textContent = failed === 0
         ? `Hoàn tất ${succeeded}/${selected.length} bài.`
         : `Thành công ${succeeded}, lỗi ${failed}. Mở từng bài để xem thêm hoặc thử lại.`;
+}
+
+function normalizeCommentProfile(profile) {
+    const values = profile && typeof profile === 'object' ? profile : {};
+    return {
+        name: String(values.name || ''),
+        className: String(values.className || ''),
+        studentId: String(values.studentId || '')
+    };
+}
+
+function hasCompleteCommentProfile(profile) {
+    return Boolean(profile.name.trim() && profile.className.trim() && profile.studentId.trim());
+}
+
+function readCommentProfileForm() {
+    return normalizeCommentProfile({
+        name: elements.commentName.value,
+        className: elements.commentClass.value,
+        studentId: elements.commentStudentId.value
+    });
+}
+
+function populateCommentProfile() {
+    elements.commentName.value = state.commentProfile.name;
+    elements.commentClass.value = state.commentProfile.className;
+    elements.commentStudentId.value = state.commentProfile.studentId;
+    updateCommentPreview();
+}
+
+function updateCommentPreview() {
+    const profile = readCommentProfileForm();
+    elements.commentPreview.textContent = [
+        profile.name.trim() || 'Tên',
+        profile.className.trim() || 'Lớp',
+        profile.studentId.trim() || 'Mã số',
+        'đã xem ạ'
+    ].join(' - ');
+}
+
+async function saveCommentProfile() {
+    const profile = readCommentProfileForm();
+    const storageUpdate = { [AUTO_COMMENT_PROFILE_KEY]: profile };
+    state.commentProfile = profile;
+
+    if (state.autoCommentEnabled && !hasCompleteCommentProfile(profile)) {
+        state.autoCommentEnabled = false;
+        elements.autoCommentToggle.checked = false;
+        storageUpdate[AUTO_COMMENT_ENABLED_KEY] = false;
+        elements.settingsStatus.textContent = 'Đã tắt tự động bình luận vì cần nhập đủ Tên, Lớp và Mã số.';
+    } else {
+        elements.settingsStatus.textContent = 'Đã lưu thông tin bình luận.';
+    }
+
+    await chrome.storage.local.set(storageUpdate);
+}
+
+async function updateAutoCommentSetting() {
+    const enabled = elements.autoCommentToggle.checked;
+
+    if (enabled && !hasCompleteCommentProfile(readCommentProfileForm())) {
+        elements.autoCommentToggle.checked = false;
+        state.autoCommentEnabled = false;
+        elements.settingsStatus.textContent = 'Hãy nhập đủ Tên, Lớp và Mã số trước khi bật tự động bình luận.';
+        return;
+    }
+
+    state.autoCommentEnabled = enabled;
+    await chrome.storage.local.set({ [AUTO_COMMENT_ENABLED_KEY]: enabled });
+    elements.settingsStatus.textContent = enabled
+        ? 'Đã bật tự động bình luận sau khi hoàn thành bài.'
+        : 'Đã tắt tự động bình luận.';
 }
 
 async function updateQuickButtonSetting() {

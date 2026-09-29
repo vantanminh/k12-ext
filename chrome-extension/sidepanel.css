@@ -200,6 +200,30 @@ main { flex: 1; }
 .switch input:checked + .switch-track::after { transform: translateX(17px); }
 .switch input:focus-visible + .switch-track { outline: 2px solid #0f766e; outline-offset: 2px; }
 
+.comment-profile-fields {
+    display: grid;
+    gap: 10px;
+    margin-top: 13px;
+    padding-top: 12px;
+    border-top: 1px solid #edf2ef;
+}
+.profile-field { display: grid; gap: 5px; color: #52655d; font-size: 11px; font-weight: 600; }
+.profile-field input {
+    width: 100%;
+    min-height: 36px;
+    padding: 8px 9px;
+    border: 1px solid #dfe9e5;
+    border-radius: 9px;
+    outline: 0;
+    background: #fbfdfc;
+    color: #20342d;
+    font-size: 12px;
+}
+.profile-field input:focus { border-color: #79bbaa; box-shadow: 0 0 0 2px rgba(15, 148, 133, .1); }
+.profile-field input::placeholder { color: #9aa7a1; }
+.comment-preview-line { margin: 0; color: #84928c; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+.comment-preview-line span { color: #406158; font-weight: 650; }
+
 .extension-info { display: grid; gap: 12px; }
 .info-row { display: flex; align-items: center; justify-content: space-between; color: #718079; font-size: 12px; }
 .info-row strong { color: #314a40; font-size: 12px; }

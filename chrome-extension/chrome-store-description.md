@@ -20,18 +20,19 @@ K12 Video Runner mở một sidebar ngay trong Chrome để người dùng chọ
 
 Với bài lấy từ danh sách, khi người dùng bấm hoàn thành, tiện ích gửi lessonId tới API `Lesson/learn` để lấy liên kết chuẩn của bài, rồi đọc các thông tin cần thiết từ HTML, gồm coursewareId, lessonId, courseSiteId, coursewareType, site, securityToken và các tham số options liên quan. Courseware thường dùng API `Courseware/markComplete`; video tiếp tục dùng API hoàn tất video. Các yêu cầu dùng phiên đăng nhập hiện tại và chỉ được gửi sau khi người dùng chọn bài, bấm nút hoàn thành.
 
-Trên từng trang bài học, người dùng vẫn có thể dùng nút nổi `Hoàn thành bài` một lần. Tab `Quản lý` trong sidebar cho phép bật/tắt nút nổi và mở trang quản lý extension của Chrome.
+Trên từng trang bài học, người dùng vẫn có thể dùng nút nổi `Hoàn thành bài` một lần. Tab `Quản lý` trong sidebar cho phép bật/tắt nút nổi, bật bình luận tự động theo Tên, Lớp, Mã số và mở trang quản lý extension của Chrome.
 
 Điểm hữu ích của tiện ích:
 
 - Chọn và hoàn thành nhiều bài học từ sidebar Chrome.
 - Hiển thị nút thao tác nhanh ngay trên trang bài học.
+- Tùy chọn gửi bình luận `Tên - Lớp - Mã số - đã xem ạ` sau khi hoàn thành bài.
 - Tận dụng phiên đăng nhập hiện tại của người dùng, không yêu cầu nhập lại cookie hoặc token.
 - Phản hồi rõ ràng ngay trên giao diện sau khi gửi request.
 - Nếu hệ thống xác nhận request thành công thì tiện ích thông báo bài học đã hoàn tất.
 - Nếu request thất bại hoặc dữ liệu trên trang không đủ, tiện ích hiển thị lỗi tương ứng để người dùng dễ kiểm tra.
 
-Tiện ích chỉ đọc trang và gửi yêu cầu tới `hcm.k12online.vn`. Sidebar chỉ lấy các bài học liên kết trên trang hiện tại; tiện ích không tự chọn hoặc tự hoàn thành bài.
+Tiện ích chỉ đọc trang và gửi yêu cầu tới `hcm.k12online.vn`. Sidebar chỉ lấy các bài học liên kết trên trang hiện tại; tiện ích không tự chọn hoặc tự hoàn thành bài. Bình luận tự động chỉ được gửi khi người dùng bật tùy chọn và hoàn thành thao tác.
 
 K12 Video Runner phù hợp cho người dùng muốn quản lý và hoàn thành nhanh các bài học K12 từ một sidebar duy nhất.
 
@@ -165,7 +166,7 @@ Mở sidebar để chọn và đánh dấu hoàn thành nhiều bài học K12 c
 
 ### Mô tả ngắn gọn hơn nếu cần
 
-K12 Video Runner mở sidebar trên Chrome để chọn các bài học đang hiển thị trên hcm.k12online.vn, rồi đánh dấu hoàn thành các bài được chọn bằng phiên đăng nhập hiện tại. Sidebar hiển thị tiến độ và kết quả từng bài; nút nổi trên từng trang có thể bật hoặc tắt trong mục Quản lý.
+K12 Video Runner mở sidebar trên Chrome để chọn các bài học đang hiển thị trên hcm.k12online.vn, rồi đánh dấu hoàn thành các bài được chọn bằng phiên đăng nhập hiện tại. Người dùng có thể bật bình luận tự động theo Tên, Lớp, Mã số. Sidebar hiển thị tiến độ và kết quả từng bài; nút nổi trên từng trang có thể bật hoặc tắt trong mục Quản lý.
 
 ### Danh mục đề xuất
 

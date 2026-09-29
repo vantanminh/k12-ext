@@ -83,6 +83,37 @@
                     </label>
                 </div>
 
+                <div class="settings-card">
+                    <label class="setting-row" for="auto-comment-toggle">
+                        <span class="setting-copy">
+                            <strong>Tự động bình luận</strong>
+                            <span>Tự gửi bình luận sau khi đánh dấu bài hoàn thành.</span>
+                        </span>
+                        <span class="switch">
+                            <input id="auto-comment-toggle" type="checkbox">
+                            <span class="switch-track" aria-hidden="true"></span>
+                        </span>
+                    </label>
+                    <div class="comment-profile-fields">
+                        <label class="profile-field" for="comment-name">
+                            <span>Tên</span>
+                            <input id="comment-name" type="text" maxlength="120" autocomplete="name" placeholder="Nhập tên">
+                        </label>
+                        <label class="profile-field" for="comment-class">
+                            <span>Lớp</span>
+                            <input id="comment-class" type="text" maxlength="80" placeholder="Nhập lớp">
+                        </label>
+                        <label class="profile-field" for="comment-student-id">
+                            <span>Mã số</span>
+                            <input id="comment-student-id" type="text" maxlength="80" placeholder="Nhập mã số">
+                        </label>
+                        <p class="comment-preview-line">
+                            Bình luận mẫu: <span id="comment-preview">Tên - Lớp - Mã số - đã xem ạ</span>
+                        </p>
+                        <p class="comment-preview-line">Thông tin này được lưu trong extension trên Chrome.</p>
+                    </div>
+                </div>
+
                 <div class="settings-card extension-info">
                     <div class="info-row">
                         <span>Phiên bản</span>

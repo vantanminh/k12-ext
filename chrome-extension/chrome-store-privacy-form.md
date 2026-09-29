@@ -6,13 +6,13 @@ File này là nội dung gợi ý để điền nhanh phần `Quyền riêng tư
 
 ### Mô tả mục đích duy nhất
 
-K12 Video Runner có một mục đích duy nhất là giúp người dùng chọn bài học trên hcm.k12online.vn và đánh dấu các bài đã chọn là hoàn thành. Sidebar đọc tên, ID và tiến độ từ các dòng bài đang hiển thị. Khi người dùng chọn bài và bấm nút, tiện ích gửi lessonId tới API `Lesson/learn` để lấy liên kết chuẩn, đọc dữ liệu cần thiết từ trang bài, rồi gửi yêu cầu hoàn thành. Courseware thường dùng API `Courseware/markComplete`; video vẫn dùng API hoàn tất video. Nút nổi `Hoàn thành bài` trên trang riêng lẻ có thể bật hoặc tắt trong mục Quản lý. Tiện ích không dùng cho quảng cáo, theo dõi hành vi, phân tích dữ liệu hoặc website khác.
+K12 Video Runner có một mục đích duy nhất là giúp người dùng chọn bài học trên hcm.k12online.vn và đánh dấu các bài đã chọn là hoàn thành. Sidebar đọc tên, ID và tiến độ từ các dòng bài đang hiển thị. Khi người dùng chọn bài và bấm nút, tiện ích gửi lessonId tới API `Lesson/learn` để lấy liên kết chuẩn, đọc dữ liệu cần thiết từ trang bài, rồi gửi yêu cầu hoàn thành. Courseware thường dùng API `Courseware/markComplete`; video vẫn dùng API hoàn tất video. Người dùng có thể bật bình luận tự động dạng `Tên - Lớp - Mã số - đã xem ạ`. Nút nổi `Hoàn thành bài` trên trang riêng lẻ có thể bật hoặc tắt trong mục Quản lý. Tiện ích không dùng cho quảng cáo, theo dõi hành vi, phân tích dữ liệu hoặc website khác.
 
 ## 2. Lý do yêu cầu quyền
 
 ### Lý do yêu cầu Quyền từ phía máy chủ
 
-Tiện ích cần quyền truy cập vào mẫu khớp `https://hcm.k12online.vn/*` để content script đọc danh sách bài học đang hiển thị, lấy liên kết bài bằng API `Lesson/learn`, đọc các tham số cần thiết từ trang bài học và gửi yêu cầu cùng domain sau khi người dùng chọn bài. Quyền `sidePanel` mở sidebar Chrome; quyền `storage` chỉ lưu cục bộ tùy chọn bật/tắt nút nổi. Tiện ích không yêu cầu quyền truy cập website khác, cookies hoặc activeTab.
+Tiện ích cần quyền truy cập vào mẫu khớp `https://hcm.k12online.vn/*` để content script đọc danh sách bài học đang hiển thị, lấy liên kết bài bằng API `Lesson/learn`, đọc các tham số cần thiết từ trang bài học và gửi yêu cầu cùng domain sau khi người dùng chọn bài. Quyền `sidePanel` mở sidebar Chrome; quyền `storage` lưu tùy chọn và thông tin bình luận cục bộ. Tiện ích không yêu cầu quyền truy cập website khác, cookies hoặc activeTab.
 
 ## 3. Có phải bạn đang dùng mã từ xa không?
 
@@ -26,16 +26,16 @@ Toàn bộ mã JavaScript và CSS của tiện ích đều được đóng gói 
 
 ### Bạn định thu thập loại dữ liệu nào của người dùng bây giờ hoặc trong tương lai?
 
-Khuyến nghị chọn: `Không có mục nào`.
+Để khai báo thận trọng, chọn `Thông tin nhận dạng cá nhân` cho Tên và Mã số người dùng tự nhập. Các giá trị chỉ lưu trong Chrome và chỉ được gửi tới `hcm.k12online.vn` khi người dùng bật bình luận tự động rồi chủ động hoàn thành bài.
 
 Giải thích nội bộ:
 
-- Tiện ích không thu thập, lưu trữ hoặc gửi dữ liệu người dùng về phía nhà phát triển.
+- Tiện ích không gửi dữ liệu về phía nhà phát triển; tên, lớp và mã số tùy chọn được lưu cục bộ trong Chrome.
 - Tiện ích chỉ xử lý cục bộ tên và liên kết bài học trên trang hiện tại, cùng các bài người dùng chọn.
 - Request được gửi tới cùng hệ thống `hcm.k12online.vn` như một phần của chức năng trên website mà người dùng đang sử dụng, không phải gửi dữ liệu về máy chủ riêng của nhà phát triển extension.
-- Tùy chọn nút nổi được lưu cục bộ trong Chrome; danh sách bài chọn không được lưu sau phiên sidebar.
+- Tùy chọn nút nổi, cài đặt bình luận và thông tin bình luận được lưu cục bộ trong Chrome; danh sách bài chọn không được lưu sau phiên sidebar.
 
-Nếu phía Chrome Web Store yêu cầu cách khai báo bảo thủ hơn trong quá trình review, phương án dự phòng gần nhất là chỉ chọn `Nội dung trang web`. Tuy nhiên với cách triển khai hiện tại, câu trả lời đề xuất vẫn là không thu thập dữ liệu người dùng.
+Nếu biểu mẫu hiển thị tên loại dữ liệu khác, chọn loại gần nhất với tên và mã số. Không khai báo rằng extension không xử lý dữ liệu nhận dạng cá nhân.
 
 ## 5. Các xác nhận bắt buộc
 
@@ -75,7 +75,7 @@ Toàn bộ mã JS và CSS đều nằm trong gói extension. Tiện ích không 
 
 ### Dữ liệu người dùng
 
-Không thu thập dữ liệu người dùng.
+Thông tin nhận dạng cá nhân do người dùng tự nhập (Tên và Mã số) được lưu cục bộ trong Chrome và chỉ gửi tới hcm.k12online.vn khi người dùng bật bình luận tự động.
 
 ### URL chính sách quyền riêng tư
 

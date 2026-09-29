@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "minimum_chrome_version": "114",
   "name": "K12 Video Runner",
-  "description": "Chọn và đánh dấu hoàn thành bài học K12 từ sidebar của Chrome.",
-  "version": "1.2.1",
+  "description": "Chọn, hoàn thành và tùy chọn bình luận bài học K12 từ sidebar Chrome.",
+  "version": "1.3.1",
   "action": {
     "default_title": "K12 Video Runner"
   },

@@ -480,8 +480,9 @@
             const currentPage = new URL(location.href);
             const lessonId = currentPage.pathname.split('/').pop();
             const coursewareId = currentPage.searchParams.get('coursewareId') || '';
-            const courseSiteId = currentPage.searchParams.get('courseSiteId') || '';
             const site = currentPage.searchParams.get('site') || '';
+            // Same fallback as getLessonCandidate so the current item and its sidebar entry share one key.
+            const courseSiteId = currentPage.searchParams.get('courseSiteId') || site;
             const currentKey = `${lessonId}:${coursewareId}:${courseSiteId}:${site}`;
             lessons.set(currentKey, {
                 key: currentKey,
@@ -519,8 +520,12 @@
             if (candidate) {
                 const previous = lessons.get(candidate.key);
                 if (!previous) lessons.set(candidate.key, candidate);
-                else if (isCoursewarePageUrl() && candidate.coursewareType) lessons.set(candidate.key, { ...previous, ...candidate,
-                    subject: candidate.subject || previous.subject, progress: candidate.progress || previous.progress });
+                else if (isCoursewarePageUrl() && candidate.coursewareType) {
+                    // Re-insert so the current item takes its sidebar position; prerequisites must run in K12's order.
+                    lessons.delete(candidate.key);
+                    lessons.set(candidate.key, { ...previous, ...candidate,
+                        subject: candidate.subject || previous.subject, progress: candidate.progress || previous.progress });
+                }
             }
         });
 

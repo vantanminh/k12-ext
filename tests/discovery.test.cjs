@@ -131,3 +131,18 @@ test('an explicitly selected Exercise stays limited to that exercise', async () 
     assert.equal(result.candidates[0], candidate);
     assert.equal(h.created.length, 0);
 });
+
+test('current courseware keeps its sidebar position so prerequisites run in K12 order', () => {
+    const { parseHTML } = require('linkedom');
+    const lesson = '6ab7e04a1d5332cbc90330b7';
+    const base = `https://hcm.k12online.vn/79000729/page/LMS/Lesson/Courseware/learn/${lesson}`;
+    const link = (id, type) => `<li><a data-id="${id}" data-type="${type}" href="${base}?coursewareId=${id}&site=2003644">${id}</a></li>`;
+    const href = `${base}?coursewareId=vid1&site=2003644`;
+    const { document } = parseHTML(`<html><body><ul>${link('pdf1', 'Courseware.PDF')}${link('vid1', 'Courseware.Video')}${link('ex1', 'Courseware.Exercise')}</ul></body></html>`);
+    const script = readFileSync(join(__dirname, '../chrome-extension/content.js'), 'utf8')
+        .replace(/    if \(document\.readyState === 'loading'\) \{[\s\S]*?\n\}\)\(\);\s*$/, '    globalThis.candidates = getLessonCandidates;\n})();');
+    const scope = { document, URL, URLSearchParams, location: new URL(href) };
+    document.scripts = [];
+    vm.runInNewContext(script, scope);
+    assert.deepEqual(Array.from(scope.candidates(), c => c.coursewareId), ['pdf1', 'vid1', 'ex1']);
+});

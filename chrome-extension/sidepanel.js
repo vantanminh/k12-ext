@@ -704,7 +704,7 @@ async function checkAiServer() {
         elements.aiStatus.textContent = health.protocol_version !== 2
             ? 'Server đang chạy bản cũ. Hãy khởi động lại bằng start.ps1.'
             : health.ready ? `Server sẵn sàng, model ${health.model}.${health.email_login ? '' : ' Server chưa bật đăng nhập email.'}`
-            : `Server đang chạy. Cần cấu hình ${[!health.api_key_configured ? 'OPENAI_API_KEY' : '', !health.email_login && !health.connection_token_configured ? 'đăng nhập email (RESEND_API_KEY) hoặc K12_SERVER_TOKEN' : ''].filter(Boolean).join(' và ')} trên server.`;
+            : `Server đang chạy. Cần cấu hình ${[!health.api_key_configured ? 'OPENAI_API_KEY' : '', !health.email_login && !health.connection_token_configured ? 'đăng nhập email (Cloudflare Email Service) hoặc K12_SERVER_TOKEN' : ''].filter(Boolean).join(' và ')} trên server.`;
     } catch (error) { elements.aiStatus.textContent = `Không kết nối được server: ${error.message}`; }
     finally { elements.aiHealth.disabled = false; }
 }

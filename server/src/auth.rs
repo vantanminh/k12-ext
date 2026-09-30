@@ -513,11 +513,25 @@ pub enum Mailer {
     Disabled,
     /// Local development only: prints the code to the server console.
     Log,
-    Resend {
-        api_key: String,
+    /// Cloudflare Email Service REST API:
+    /// POST https://api.cloudflare.com/client/v4/accounts/{account_id}/email/sending/send
+    Cloudflare {
+        api_token: String,
         from: String,
         url: String,
     },
+}
+
+impl Mailer {
+    pub fn cloudflare(account_id: &str, api_token: String, from: String) -> Self {
+        Mailer::Cloudflare {
+            api_token,
+            from,
+            url: format!(
+                "https://api.cloudflare.com/client/v4/accounts/{account_id}/email/sending/send"
+            ),
+        }
+    }
 }
 
 impl Mailer {
@@ -542,22 +556,34 @@ impl Mailer {
                 println!("[dev] OTP for {to}: {code}");
                 Ok(())
             }
-            Mailer::Resend { api_key, from, url } => {
+            Mailer::Cloudflare {
+                api_token,
+                from,
+                url,
+            } => {
                 let response = client
                     .post(url)
-                    .bearer_auth(api_key)
-                    .json(&json!({"from": from, "to": [to], "subject": subject, "text": text, "html": html}))
+                    .bearer_auth(api_token)
+                    .json(&json!({"to": to, "from": from, "subject": subject, "text": text, "html": html}))
                     .send()
                     .await
                     .map_err(|e| eprintln!("Email request failed: {e}"))?;
-                if response.status().is_success() {
+                let status = response.status();
+                let body: Value = response.json().await.unwrap_or(Value::Null);
+                // Success also requires the recipient not to have bounced permanently.
+                let bounced = body["result"]["permanent_bounces"]
+                    .as_array()
+                    .is_some_and(|list| !list.is_empty());
+                if status.is_success() && body["success"] == true && !bounced {
                     return Ok(());
                 }
-                let status = response.status();
-                let body = response.text().await.unwrap_or_default();
                 eprintln!(
-                    "Email provider error: HTTP {status}, {}",
-                    body.chars().take(300).collect::<String>()
+                    "Email provider error: HTTP {status}, errors={}, bounced={bounced}",
+                    body["errors"]
+                        .to_string()
+                        .chars()
+                        .take(300)
+                        .collect::<String>()
                 );
                 Err(())
             }
@@ -980,6 +1006,50 @@ mod tests {
         // 2026-09-30 16:59:59 UTC = 23:59:59 in Vietnam; one second later is a new day.
         let before = 1_790_787_599;
         assert_eq!(day(before) + 1, day(before + 1));
+    }
+
+    #[tokio::test]
+    async fn cloudflare_mailer_fails_on_errors_and_permanent_bounces() {
+        use axum::{Router, routing::post};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let mock = Router::new()
+            .route("/ok", post(|| async {
+                Json(json!({"success": true, "errors": [], "result": {"delivered": ["a@b.vn"], "permanent_bounces": [], "queued": []}}))
+            }))
+            .route("/bounce", post(|| async {
+                Json(json!({"success": true, "errors": [], "result": {"delivered": [], "permanent_bounces": ["a@b.vn"], "queued": []}}))
+            }))
+            .route("/forbidden", post(|| async {
+                (StatusCode::FORBIDDEN, Json(json!({"success": false, "errors": [{"code": 10102, "message": "email.sending.error.authentication.forbidden"}], "result": null})))
+            }));
+        let task = tokio::spawn(async move { axum::serve(listener, mock).await.unwrap() });
+        let client = reqwest::Client::new();
+        let mailer = |path: &str| Mailer::Cloudflare {
+            api_token: "t".into(),
+            from: "login@example.vn".into(),
+            url: format!("{base}{path}"),
+        };
+        assert!(
+            mailer("/ok")
+                .send_code(&client, "a@b.vn", "123456")
+                .await
+                .is_ok()
+        );
+        assert!(
+            mailer("/bounce")
+                .send_code(&client, "a@b.vn", "123456")
+                .await
+                .is_err()
+        );
+        assert!(
+            mailer("/forbidden")
+                .send_code(&client, "a@b.vn", "123456")
+                .await
+                .is_err()
+        );
+        assert!(Mailer::cloudflare("acc", "t".into(), "f".into()).enabled());
+        task.abort();
     }
 
     /// Shared contract for both stores; `email` must be unused in `store`.

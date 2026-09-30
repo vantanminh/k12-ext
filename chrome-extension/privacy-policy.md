@@ -10,7 +10,7 @@ There is no analytics, advertising or tracking service. AI solving goes through 
 
 ## Email login
 
-To use AI solving on the hosted server, users sign in with an email address and a six-digit code sent to that address; there is no password. The server stores the email address, whether the account is disabled, and per-day counts of AI solves used for the daily limit. Login codes and session tokens are stored only as SHA-256 hashes. The code email is delivered through the email provider Resend. Sessions expire after 30 days or at sign-out; login codes expire after 10 minutes; daily usage counts are deleted after 7 days. The account record is kept until the user asks for deletion through the repository below.
+To use AI solving on the hosted server, users sign in with an email address and a six-digit code sent to that address; there is no password. The server stores the email address, whether the account is disabled, and per-day counts of AI solves used for the daily limit. Login codes and session tokens are stored only as SHA-256 hashes. The code email is delivered through Cloudflare Email Service. Sessions expire after 30 days or at sign-out; login codes expire after 10 minutes; daily usage counts are deleted after 7 days. The account record is kept until the user asks for deletion through the repository below.
 
 ## Data read and stored locally
 

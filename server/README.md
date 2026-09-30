@@ -29,8 +29,8 @@ Mặc định lắng nghe tại http://127.0.0.1:3210. `GET /health` không tr�
 Đặt Root Directory của dịch vụ là gốc repository, nơi có `Dockerfile` và `railway.json`. Cấu hình có sẵn builder Dockerfile, healthcheck /health và restart khi lỗi.
 
 1. Thêm Postgres vào project Railway, rồi đặt `DATABASE_URL=${{Postgres.DATABASE_URL}}` cho dịch vụ server. Bảng được tạo tự động khi server khởi động.
-2. Tạo tài khoản Resend, xác minh domain gửi mail, tạo API key.
-3. Đặt biến: `OPENAI_API_KEY`, `OPENAI_MODEL`, `RESEND_API_KEY`, `K12_EMAIL_FROM`, `K12_DAILY_SOLVE_LIMIT`; tùy chọn `K12_SERVER_TOKEN` cho quản trị.
+2. Trong Cloudflare, bật Email Sending cho domain (Email Service), rồi tạo API token có quyền gửi email.
+3. Đặt biến: `OPENAI_API_KEY`, `OPENAI_MODEL`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_EMAIL_API_TOKEN`, `K12_EMAIL_FROM` (địa chỉ trên domain đã bật, ví dụ `login@domain.com`), `K12_DAILY_SOLVE_LIMIT`; tùy chọn `K12_SERVER_TOKEN` cho quản trị.
 4. Generate Domain, rồi nhập URL HTTPS trong **Cấu hình server** của tiện ích. Tiện ích yêu cầu quyền kết nối đúng host HTTPS đã chọn.
 
 Khi có PORT do nền tảng cấp, server tự bind 0.0.0.0:PORT và lấy IP người dùng từ hop cuối của `X-Forwarded-For` do proxy Railway thêm vào. Giới hạn theo IP nằm trong bộ nhớ, đúng cho một instance.
@@ -41,7 +41,7 @@ Tài liệu Railway: https://docs.railway.com/config-as-code/reference và https
 
 ## Đăng nhập email
 
-Người dùng nhập email, nhận mã 6 số, không có mật khẩu. Tài khoản được tạo khi xác minh mã lần đầu.
+Người dùng nhập email, nhận mã 6 số, không có mật khẩu. Mã gửi qua [Cloudflare Email Service REST API](https://developers.cloudflare.com/email-service/api/send-emails/rest-api/); gửi thất bại khi API trả lỗi hoặc địa chỉ nằm trong `permanent_bounces`. Tài khoản được tạo khi xác minh mã lần đầu.
 
 | Endpoint | Body / header | Kết quả |
 | --- | --- | --- |

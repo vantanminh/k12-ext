@@ -1,19 +1,38 @@
 {
   "manifest_version": 3,
+  "minimum_chrome_version": "114",
   "name": "K12 Video Runner",
-  "description": "Hiển thị nút Chạy tiến trình trên trang video của hcm.k12online.vn và gửi yêu cầu hoàn tất video.",
-  "version": "1.0.3",
+  "description": "Chọn, hoàn thành và tùy chọn bình luận bài học K12 từ sidebar Chrome.",
+  "version": "1.7.0",
   "action": {
-    "default_title": "K12 Video Runner",
-    "default_popup": "popup.html"
+    "default_title": "K12 Video Runner"
   },
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "permissions": [
+    "sidePanel",
+    "storage"
+  ],
   "content_scripts": [
+    {
+      "matches": ["https://hcm.k12online.vn/*"],
+      "js": ["api-observer.js", "page-actions.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
     {
       "matches": [
         "https://hcm.k12online.vn/*"
       ],
       "js": [
-        "content.js"
+        "api-observer.js",
+        "ai-common.js",
+        "content.js",
+        "exercise-reader.js"
       ],
       "css": [
         "styles.css"
@@ -22,6 +41,9 @@
     }
   ],
   "host_permissions": [
-    "https://hcm.k12online.vn/*"
-  ]
+    "https://hcm.k12online.vn/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "optional_host_permissions": ["https://*/*"]
 }

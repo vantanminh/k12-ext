@@ -1,81 +1,44 @@
-# Chrome Web Store Privacy Form
+# Chrome Web Store Privacy Form — 1.7.0
 
-File này là nội dung gợi ý để điền nhanh phần `Quyền riêng tư` trên Chrome Web Store cho extension `K12 Video Runner`.
+Nội dung tham khảo cho biểu mẫu hiện hành khi phát hành. Chưa gửi duyệt Store.
 
-## 1. Mục đích duy nhất
+## Mục đích duy nhất
 
-### Mô tả mục đích duy nhất
+K12 Video Runner giúp quản lý bài học trên hcm.k12online.vn: quét toàn bộ danh sách, hiển thị môn và tiến độ, cấu hình cách xử lý từng môn, lấy đáp án AI, nộp bài tập, đánh dấu tài liệu/video đã xem và gửi bình luận đáp án khi người dùng yêu cầu.
 
-K12 Video Runner có một mục đích duy nhất là hỗ trợ người dùng trên hcm.k12online.vn thao tác hoàn tất tiến trình của bài học video nhanh hơn. Tiện ích chỉ hiển thị nút `Chạy tiến trình` trên đúng trang bài học video, đọc các tham số cần thiết ngay trên trang hiện tại và gửi yêu cầu hoàn tất video tới hệ thống khi người dùng chủ động bấm nút. Tiện ích không dùng cho quảng cáo, theo dõi hành vi, phân tích dữ liệu, thay đổi nội dung trên website khác hoặc cung cấp chức năng ngoài phạm vi này.
+## Quyền
 
-## 2. Lý do yêu cầu quyền
+- `https://hcm.k12online.vn/*`: đọc danh sách/nội dung/form và gửi các thao tác K12 bằng phiên đăng nhập hiện tại.
+- Localhost HTTP: kết nối backend Rust do người dùng chạy.
+- `optional_host_permissions: https://*/*`: yêu cầu quyền cho đúng origin HTTPS người dùng nhập làm backend, ví dụ dịch vụ Railway của họ. Không yêu cầu quyền toàn bộ HTTPS khi cài.
+- `sidePanel`: mở giao diện quản lý.
+- `storage`: lưu hồ sơ tùy chọn, quy tắc môn, cấu hình backend, cache tối đa 10 đề/đáp án, lịch sử chống bình luận trùng và log chẩn đoán tùy chọn.
 
-### Lý do yêu cầu Quyền từ phía máy chủ
+Không cần quyền cookies hoặc activeTab.
 
-Tiện ích cần quyền truy cập vào mẫu khớp `https://hcm.k12online.vn/*` vì content script chỉ chạy trên domain này để nhận diện đúng trang bài học video, hiển thị nút thao tác trong giao diện hiện tại, đọc các tham số đã có sẵn trên trang và gửi yêu cầu hoàn tất video tới API cùng domain khi người dùng bấm nút. Tiện ích không yêu cầu quyền trên website khác và không dùng các quyền mở rộng như `tabs`, `storage`, `cookies` hoặc `activeTab`.
+## Mã từ xa
 
-## 3. Có phải bạn đang dùng mã từ xa không?
+Chọn “Không, tôi hiện không sử dụng Mã từ xa”. Toàn bộ JavaScript/CSS thực thi nằm trong gói tiện ích. Nội dung JSON trả từ AI chỉ được kiểm tra và hiển thị, không thực thi như mã.
 
-Chọn: `Không, tôi hiện không sử dụng Mã từ xa`
+## Dữ liệu cần khai báo
 
-### Lý do
+Đối chiếu tên loại dữ liệu trên biểu mẫu Store thực tế:
 
-Toàn bộ mã JavaScript và CSS của tiện ích đều được đóng gói sẵn trong extension package. Tiện ích không tải hoặc thực thi JavaScript hay Wasm từ máy chủ bên ngoài, không dùng `eval()`, không nhúng script từ xa và không thực thi mô-đun bên ngoài gói extension.
+- Thông tin nhận dạng cá nhân: email đăng nhập, gửi tới server AI để nhận mã và tạo phiên; server lưu email và số lượt giải mỗi ngày. Tên/Lớp/Mã số tự nhập, lưu cục bộ và gửi tới K12 khi bật bình luận. Không đưa hồ sơ này vào payload AI.
+- Nội dung website: câu hỏi, lựa chọn, bảng, URL PDF/hình công khai được gửi tới backend đã cấu hình và OpenAI khi giải bài. Rust tải byte ảnh rồi gửi cho OpenAI; OpenAI tải PDF được cung cấp. Không gửi cookie/token K12 cho AI.
+- Thông tin xác thực: token phiên đăng nhập email lưu cục bộ và gửi tới server AI; server chỉ lưu SHA-256 của token. Không phải token K12.
+- Hoạt động/truyền dữ liệu mạng: log API tùy chọn ở lại máy, có che trường credentials và chỉ xuất khi người dùng yêu cầu. HTML chỉ giữ metadata.
 
-## 4. Sử dụng dữ liệu
+Không khai báo rằng tiện ích chỉ gửi dữ liệu tới K12 hoặc chỉ hỗ trợ server localhost. Backend HTTPS do người dùng chọn cũng nhận nội dung đề. Server AI hosted do nhà phát triển vận hành nhận email và nội dung đề; không có analytics, quảng cáo hoặc tracking.
 
-### Bạn định thu thập loại dữ liệu nào của người dùng bây giờ hoặc trong tương lai?
+## Xác nhận sử dụng dữ liệu
 
-Khuyến nghị chọn: `Không có mục nào`.
+Dữ liệu dùng cho chức năng quản lý bài K12 và AI người dùng yêu cầu, không bán, không dùng cho mục đích ngoài phạm vi hoặc quyết định tín dụng. Đối chiếu nội dung ba xác nhận bắt buộc của Store trước khi nộp biểu mẫu.
 
-Giải thích nội bộ:
+## URL chính sách
 
-- Tiện ích không thu thập, lưu trữ hoặc gửi dữ liệu người dùng về phía nhà phát triển.
-- Tiện ích chỉ xử lý cục bộ dữ liệu hiển thị trên trang hiện tại để thực hiện thao tác do chính người dùng kích hoạt.
-- Request được gửi tới cùng hệ thống `hcm.k12online.vn` như một phần của chức năng trên website mà người dùng đang sử dụng, không phải gửi dữ liệu về máy chủ riêng của nhà phát triển extension.
-
-Nếu phía Chrome Web Store yêu cầu cách khai báo bảo thủ hơn trong quá trình review, phương án dự phòng gần nhất là chỉ chọn `Nội dung trang web`. Tuy nhiên với cách triển khai hiện tại, câu trả lời đề xuất vẫn là không thu thập dữ liệu người dùng.
-
-## 5. Các xác nhận bắt buộc
-
-Đánh dấu xác nhận cả 3 mục sau:
-
-- `Tôi không bán hoặc chuyển dữ liệu người dùng cho bên thứ ba, ngoài những trường hợp sử dụng đã được phê duyệt`.
-- `Tôi không sử dụng hoặc chuyển dữ liệu người dùng cho các mục đích không liên quan đến mục đích duy nhất của mặt hàng mà tôi sở hữu`.
-- `Tôi không sử dụng hoặc chuyển dữ liệu người dùng để xác định khả năng thanh toán nợ hoặc phục vụ mục đích cho vay`.
-
-## 6. Chính sách quyền riêng tư
-
-### URL đến chính sách quyền riêng tư
-
-Sau khi push file lên GitHub public, dùng URL này:
-
-`https://github.com/vantanminh/k12-ext/blob/main/chrome-extension/privacy-policy.md`
-
-Nếu repo đang là private, cần chuyển file này sang một URL public trước khi nộp lên store, ví dụ GitHub Pages hoặc một website công khai khác.
-
-## 7. Bản copy ngắn để dán nhanh
-
-### Mô tả mục đích duy nhất
-
-K12 Video Runner có một mục đích duy nhất là hỗ trợ người dùng trên hcm.k12online.vn thao tác hoàn tất tiến trình của bài học video nhanh hơn. Tiện ích chỉ hiển thị nút `Chạy tiến trình` trên đúng trang bài học video, đọc các tham số cần thiết trên trang hiện tại và gửi yêu cầu hoàn tất video khi người dùng chủ động bấm nút.
-
-### Lý do yêu cầu Quyền từ phía máy chủ
-
-Tiện ích cần quyền truy cập `https://hcm.k12online.vn/*` để chỉ chạy trên domain này, nhận diện đúng trang video, hiển thị nút thao tác, đọc các tham số cần thiết trên trang và gửi request hoàn tất video tới API cùng domain khi người dùng bấm nút.
-
-### Mã từ xa
-
-Không, tôi hiện không sử dụng Mã từ xa.
-
-### Lý do cho mã từ xa
-
-Toàn bộ mã JS và CSS đều nằm trong gói extension. Tiện ích không tải và không thực thi mã JS hoặc Wasm từ bên ngoài.
-
-### Dữ liệu người dùng
-
-Không thu thập dữ liệu người dùng.
-
-### URL chính sách quyền riêng tư
+Sau khi file được công bố ở repository public, có thể dùng:
 
 https://github.com/vantanminh/k12-ext/blob/main/chrome-extension/privacy-policy.md
+
+Nếu repository private, cần URL chính sách public khác trước khi nộp Store.

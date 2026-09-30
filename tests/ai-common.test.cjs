@@ -68,3 +68,17 @@ test('capture redaction covers nested credentials and form token keys', () => {
     assert.equal(result.request.nested.authorization, '[redacted]');
     assert.equal(result.request.nested.questionId, 'q1');
 });
+
+test('login emails are normalized like the Rust server and rejected before sending', () => {
+    assert.equal(ai.normalizeEmail('  Hoc.Sinh@Example.VN '), 'hoc.sinh@example.vn');
+    for (const bad of ['', 'no-at', 'a@b', 'a@@b.vn', 'a@.b.vn', 'a@b..vn', 'a b@c.vn', '@c.vn', 'é@c.vn']) {
+        assert.throws(() => ai.normalizeEmail(bad), /Email không hợp lệ/, bad);
+    }
+});
+
+test('auth headers only send a session to the server that issued it', () => {
+    const session = { server: 'https://ai.example.app', token: 'k12s_abc', email: 'a@b.vn' };
+    assert.deepEqual({ ...ai.authHeaders('https://ai.example.app', session, '') }, { Authorization: 'Bearer k12s_abc' });
+    assert.deepEqual({ ...ai.authHeaders('https://other.example.app', session, '') }, {});
+    assert.deepEqual({ ...ai.authHeaders('http://127.0.0.1:3210', null, 'admin') }, { 'x-k12-token': 'admin' });
+});

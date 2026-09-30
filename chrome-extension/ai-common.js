@@ -109,6 +109,28 @@
         return url.origin;
     }
 
+    // Mirrors normalize_email in server/src/auth.rs so errors show before a request.
+    function normalizeEmail(value) {
+        const email = String(value || '').trim().toLowerCase();
+        const at = email.indexOf('@');
+        const local = email.slice(0, at);
+        const domain = email.slice(at + 1);
+        if (at < 1 || email.length > 254 || local.length > 64 || domain.includes('@')
+            || !domain.includes('.') || /^[.-]|[.-]$/.test(domain) || domain.includes('..')
+            || !/^[\x21-\x7e]+$/.test(email)) {
+            throw new Error('Email không hợp lệ.');
+        }
+        return email;
+    }
+
+    /** Session login first; the optional admin token (K12_SERVER_TOKEN) skips quotas. */
+    function authHeaders(server, session, adminToken) {
+        const headers = {};
+        if (session?.token && session.server === server) headers.Authorization = `Bearer ${session.token}`;
+        if (adminToken) headers['x-k12-token'] = adminToken;
+        return headers;
+    }
+
     function isFreeLessonListUrl(value) {
         try {
             const url = new URL(value);
@@ -185,5 +207,5 @@
         return entry && (/^\/api\/LMS\//.test(entry.path)
             || (/^\/\d+\/$/.test(entry.path) && /^LMS\./.test(String(entry.request?.service || ''))));
     }
-    globalThis.K12AI = { plainText, validateExercise, validateAnswers, formatAnswerSummary, serverUrl, isFreeLessonListUrl, pdfUrl, imageUrl, subjectRule, workflowPreview, redact, recordableApiEntry };
+    globalThis.K12AI = { plainText, validateExercise, validateAnswers, formatAnswerSummary, serverUrl, normalizeEmail, authHeaders, isFreeLessonListUrl, pdfUrl, imageUrl, subjectRule, workflowPreview, redact, recordableApiEntry };
 })();

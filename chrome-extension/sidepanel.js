@@ -4,6 +4,7 @@ const QUICK_BUTTON_KEY = 'k12QuickButtonEnabled';
 const AUTO_COMMENT_ENABLED_KEY = 'k12AutoCommentEnabled';
 const AUTO_COMMENT_PROFILE_KEY = 'k12AutoCommentProfile';
 const SUBJECT_RULES_KEY = 'k12SubjectRules';
+const AUTH_SESSION_KEY = 'k12AuthSession';
 const state = {
     tabId: null,
     pageUrl: '',
@@ -15,7 +16,9 @@ const state = {
     autoCommentEnabled: false,
     commentProfile: { name: '', className: '', studentId: '' },
     subjectRules: {},
-    aiBusy: false
+    aiBusy: false,
+    authSession: null,
+    resendTimer: null
 };
 
 const elements = {
@@ -50,7 +53,9 @@ const elements = {
 };
 Object.assign(elements, Object.fromEntries([
     'ai-tab', 'ai-view', 'ai-server-url', 'ai-server-token', 'ai-health', 'ai-current',
-    'ai-status', 'ai-answers', 'api-record-toggle', 'api-export', 'discover-all', 'ai-selected', 'ai-submit-toggle', 'ai-read', 'ai-export-exercise', 'ai-export-result'
+    'ai-status', 'ai-answers', 'api-record-toggle', 'api-export', 'discover-all', 'ai-selected', 'ai-submit-toggle', 'ai-read', 'ai-export-exercise', 'ai-export-result',
+    'ai-login', 'ai-email', 'ai-send-code', 'ai-code-step', 'ai-code', 'ai-verify-code',
+    'ai-account', 'ai-account-email', 'ai-quota', 'ai-logout', 'ai-auth-status'
 ].map(id => [id.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), document.getElementById(id)])));
 
 async function init() {
@@ -72,6 +77,11 @@ async function init() {
     elements.aiExportExercise.addEventListener('click', exportReadExercise);
     elements.aiExportResult.addEventListener('click', exportAiResult);
     elements.aiHealth.addEventListener('click', checkAiServer);
+    elements.aiSendCode.addEventListener('click', sendLoginCode);
+    elements.aiVerifyCode.addEventListener('click', verifyLoginCode);
+    elements.aiLogout.addEventListener('click', logout);
+    elements.aiEmail.addEventListener('keydown', event => { if (event.key === 'Enter') sendLoginCode(); });
+    elements.aiCode.addEventListener('keydown', event => { if (event.key === 'Enter') verifyLoginCode(); });
     elements.apiRecordToggle.addEventListener('change', () => chrome.storage.local.set({ k12ApiRecording: elements.apiRecordToggle.checked }));
     elements.apiExport.addEventListener('click', exportApiCapture);
     [elements.aiServerUrl, elements.aiServerToken].forEach(input => input.addEventListener('change', saveAiSettings));
@@ -88,10 +98,15 @@ async function init() {
         [AUTO_COMMENT_ENABLED_KEY]: false,
         [AUTO_COMMENT_PROFILE_KEY]: { name: '', className: '', studentId: '' },
         [SUBJECT_RULES_KEY]: {},
-        k12AiServerUrl: 'http://127.0.0.1:3210', k12AiServerToken: '', k12ApiRecording: false
+        k12AiServerUrl: 'http://127.0.0.1:3210', k12AiServerToken: '', k12ApiRecording: false,
+        [AUTH_SESSION_KEY]: null, k12AuthEmail: ''
     });
     elements.aiServerUrl.value = settings.k12AiServerUrl;
     elements.aiServerToken.value = settings.k12AiServerToken;
+    elements.aiEmail.value = settings.k12AuthEmail;
+    state.authSession = settings[AUTH_SESSION_KEY];
+    renderAccount();
+    refreshAccount({ quiet: true });
     elements.apiRecordToggle.checked = settings.k12ApiRecording;
     const { k12LastAiResult } = await chrome.storage.local.get('k12LastAiResult');
     if (k12LastAiResult) {
@@ -532,15 +547,129 @@ async function saveAiSettings() {
     try {
         const url = K12AI.serverUrl(elements.aiServerUrl.value);
         await chrome.storage.local.set({ k12AiServerUrl: url, k12AiServerToken: elements.aiServerToken.value.trim() });
+        // A session belongs to the server that issued it.
+        if (state.authSession && state.authSession.server !== url) await setAuthSession(null);
         elements.aiStatus.textContent = 'Đã lưu cấu hình server.';
     } catch (error) { elements.aiStatus.textContent = error.message; }
+}
+
+async function setAuthSession(session) {
+    state.authSession = session;
+    if (session) await chrome.storage.local.set({ [AUTH_SESSION_KEY]: session });
+    else await chrome.storage.local.remove(AUTH_SESSION_KEY);
+    renderAccount();
+}
+
+function currentSession() {
+    try {
+        const server = K12AI.serverUrl(elements.aiServerUrl.value);
+        return state.authSession?.server === server ? state.authSession : null;
+    } catch (_) { return null; }
+}
+
+function renderAccount(account) {
+    const session = currentSession();
+    elements.aiLogin.hidden = Boolean(session);
+    elements.aiAccount.hidden = !session;
+    elements.aiAccountEmail.textContent = session?.email || '';
+    if (!session) elements.aiQuota.textContent = '';
+    else if (account) {
+        elements.aiQuota.textContent = `Hôm nay còn ${account.remaining_today}/${account.daily_limit} lượt giải AI.`;
+    }
+}
+
+async function refreshAccount({ quiet = false } = {}) {
+    if (!currentSession()) return;
+    try {
+        const base = K12AI.serverUrl(elements.aiServerUrl.value);
+        // Opening the panel is not a user gesture, so only check an existing grant here.
+        if (base.startsWith('https://') && !await chrome.permissions.contains({ origins: [base + '/*'] })) return;
+        renderAccount(await aiRequest('/v1/auth/me'));
+    } catch (error) {
+        if (!quiet) elements.aiAuthStatus.textContent = error.message;
+    }
+}
+
+async function sendLoginCode() {
+    if (elements.aiSendCode.disabled) return;
+    elements.aiSendCode.disabled = true;
+    let cooldown = 0;
+    try {
+        const email = K12AI.normalizeEmail(elements.aiEmail.value);
+        elements.aiEmail.value = email;
+        await chrome.storage.local.set({ k12AuthEmail: email });
+        await ensureServerPermission();
+        elements.aiAuthStatus.textContent = 'Đang gửi mã...';
+        const result = await aiRequest('/v1/auth/otp', { email });
+        cooldown = result.resend_after || 60;
+        elements.aiCodeStep.hidden = false;
+        elements.aiCode.value = '';
+        elements.aiCode.focus();
+        elements.aiAuthStatus.textContent = `Đã gửi mã tới ${email}. Kiểm tra cả thư mục Spam.`;
+    } catch (error) {
+        elements.aiAuthStatus.textContent = error.message;
+    } finally {
+        startResendCooldown(cooldown);
+    }
+}
+
+function startResendCooldown(seconds) {
+    clearInterval(state.resendTimer);
+    const tick = () => {
+        const label = elements.aiCodeStep.hidden ? 'Gửi mã đăng nhập' : 'Gửi lại mã';
+        if (seconds <= 0) {
+            clearInterval(state.resendTimer);
+            elements.aiSendCode.disabled = false;
+            elements.aiSendCode.textContent = label;
+            return;
+        }
+        elements.aiSendCode.disabled = true;
+        elements.aiSendCode.textContent = `${label} (${seconds--}s)`;
+    };
+    tick();
+    if (seconds > 0) state.resendTimer = setInterval(tick, 1000);
+}
+
+async function verifyLoginCode() {
+    const code = elements.aiCode.value.trim();
+    if (!/^\d{6}$/.test(code)) {
+        elements.aiAuthStatus.textContent = 'Nhập đủ 6 chữ số trong email.';
+        return;
+    }
+    elements.aiVerifyCode.disabled = true;
+    try {
+        const server = K12AI.serverUrl(elements.aiServerUrl.value);
+        const email = K12AI.normalizeEmail(elements.aiEmail.value);
+        const result = await aiRequest('/v1/auth/verify', { email, code });
+        await setAuthSession({ server, email: result.email, token: result.token, expiresAt: result.expires_at });
+        elements.aiCode.value = '';
+        elements.aiCodeStep.hidden = true;
+        startResendCooldown(0);
+        elements.aiAuthStatus.textContent = 'Đăng nhập thành công.';
+        await refreshAccount();
+    } catch (error) {
+        elements.aiAuthStatus.textContent = error.message;
+    } finally {
+        elements.aiVerifyCode.disabled = false;
+    }
+}
+
+async function logout() {
+    elements.aiLogout.disabled = true;
+    try { await aiRequest('/v1/auth/logout', {}); } catch (_) {}
+    await setAuthSession(null);
+    elements.aiLogout.disabled = false;
+    elements.aiAuthStatus.textContent = 'Đã đăng xuất.';
 }
 
 async function aiRequest(path, body) {
     const base = K12AI.serverUrl(elements.aiServerUrl.value);
     const response = await fetch(base + path, {
         method: body ? 'POST' : 'GET',
-        headers: body ? { 'Content-Type': 'application/json', 'x-k12-token': elements.aiServerToken.value.trim() } : {},
+        headers: {
+            ...(body ? { 'Content-Type': 'application/json' } : {}),
+            ...K12AI.authHeaders(base, state.authSession, elements.aiServerToken.value.trim())
+        },
         ...(body ? { body: JSON.stringify(body) } : {}),
         signal: AbortSignal.timeout(110000)
     });
@@ -551,6 +680,10 @@ async function aiRequest(path, body) {
         throw new Error(response.status === 413
             ? 'Đề vượt quá giới hạn dữ liệu của server. Hãy cập nhật và khởi động lại server.'
             : `Server trả HTTP ${response.status} nhưng không phải JSON. Hãy khởi động lại server bằng start.ps1.`);
+    }
+    if (response.status === 401 && ['SESSION_EXPIRED', 'UNAUTHORIZED'].includes(result.code) && currentSession()) {
+        await setAuthSession(null);
+        elements.aiAuthStatus.textContent = 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại bằng email.';
     }
     if (!response.ok) throw new Error(result.message || `Server trả HTTP ${response.status}.`);
     return result;
@@ -570,8 +703,8 @@ async function checkAiServer() {
         const health = await aiRequest('/health');
         elements.aiStatus.textContent = health.protocol_version !== 2
             ? 'Server đang chạy bản cũ. Hãy khởi động lại bằng start.ps1.'
-            : health.ready ? `Server sẵn sàng, model ${health.model}.`
-            : `Server đang chạy. Cần cấu hình ${[!health.api_key_configured ? 'OPENAI_API_KEY' : '', !health.connection_token_configured ? 'K12_SERVER_TOKEN' : ''].filter(Boolean).join(' và ')} trên server.`;
+            : health.ready ? `Server sẵn sàng, model ${health.model}.${health.email_login ? '' : ' Server chưa bật đăng nhập email.'}`
+            : `Server đang chạy. Cần cấu hình ${[!health.api_key_configured ? 'OPENAI_API_KEY' : '', !health.email_login && !health.connection_token_configured ? 'đăng nhập email (RESEND_API_KEY) hoặc K12_SERVER_TOKEN' : ''].filter(Boolean).join(' và ')} trên server.`;
     } catch (error) { elements.aiStatus.textContent = `Không kết nối được server: ${error.message}`; }
     finally { elements.aiHealth.disabled = false; }
 }
@@ -586,11 +719,15 @@ async function solveExercise(exercise) {
         await chrome.storage.local.set({ k12LastAiResult: { ...cached, exercise: input, result, submitted: false, completed: false } });
         return result;
     }
+    if (!currentSession() && !elements.aiServerToken.value.trim()) {
+        throw new Error('Hãy đăng nhập bằng email trong tab AI bài tập trước khi giải.');
+    }
     const health = await aiRequest('/health');
     if (health.protocol_version !== 2) {
         throw new Error('Server đang chạy bản cũ. Hãy khởi động lại server bằng start.ps1 rồi thử lại.');
     }
     const result = K12AI.validateAnswers(input, await aiRequest('/v1/solve', input));
+    refreshAccount({ quiet: true });
     renderAiAnswers(input, result);
     // AI output is never treated as proof of submission or completion.
     const entry = { exercise: input, result, time: new Date().toISOString(), submitted: false };

@@ -225,6 +225,10 @@ main { flex: 1; }
     padding-top: 12px;
     border-top: 1px solid #edf2ef;
 }
+.stack { display: grid; gap: 10px; }
+.stack[hidden] { display: none; }
+.server-settings summary { cursor: pointer; color: #406158; font-size: 11px; font-weight: 650; }
+.server-settings[open] summary { margin-bottom: 10px; }
 .profile-field { display: grid; gap: 5px; color: #52655d; font-size: 11px; font-weight: 600; }
 .profile-field input {
     width: 100%;

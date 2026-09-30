@@ -3,7 +3,7 @@
   "minimum_chrome_version": "114",
   "name": "K12 Video Runner",
   "description": "Chọn, hoàn thành và tùy chọn bình luận bài học K12 từ sidebar Chrome.",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "action": {
     "default_title": "K12 Video Runner"
   },

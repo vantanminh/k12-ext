@@ -1,13 +1,31 @@
 (() => {
-    const materialTypes = new Set(['Courseware.PDF', 'Courseware.Video']);
+    const materialTypes = new Set(['Courseware.PDF', 'Courseware.Video', 'Courseware.Content']);
+    const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const locked = opened => opened?.prerequisiteRequired || /chưa mở biểu mẫu/i.test(opened?.message || '');
     const complete = item => /^100\s*%?$/.test(String(item.progress || '').trim());
     async function run(items, rule, api) {
         const records = [];
+        const materials = [];
+        // K12 sometimes updates progress late, so a locked exercise gets its
+        // preceding materials re-marked once before retrying.
+        async function unlock(item) {
+            if (!rule.view) return false;
+            const before = materials.filter(material => items.indexOf(material) < items.indexOf(item));
+            if (!before.length) return false;
+            for (const material of before) await api.complete(material).catch(() => null);
+            await pause(3000);
+            return true;
+        }
         for (const item of items) {
             let opened;
             let submitted = false;
             try {
                 let type = item.coursewareType;
+                if (rule.skipCompleted && complete(item)) {
+                    if (materialTypes.has(type)) materials.push(item);
+                    records.push({ item, skipped: true, completed: true, message: 'Đã 100%, bỏ qua.' });
+                    continue;
+                }
                 if (type === 'Courseware.Exercise' && rule.exerciseMode === 'skip') {
                     records.push({ item, skipped: true, message: 'Bỏ qua bài tập theo cấu hình môn.' });
                     continue;
@@ -18,11 +36,16 @@
                 }
                 if (!type || type === 'Courseware.Exercise') {
                     opened = await api.prepare(item);
+                    if (locked(opened) && await unlock(item)) {
+                        if (opened?.tabId) await api.release(opened.tabId);
+                        opened = await api.prepare(item);
+                    }
                     if (opened?.notExercise) type = opened.coursewareType;
                     else if (!opened?.ok) throw Error(opened?.message || 'Không đọc được bài tập.');
                     else type = 'Courseware.Exercise';
                 }
                 if (materialTypes.has(type)) {
+                    materials.push(item);
                     if (!rule.view) {
                         records.push({ item, skipped: true, completed: complete(item), message: 'Bỏ qua tài liệu/video theo cấu hình môn.' });
                         continue;

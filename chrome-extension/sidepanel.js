@@ -18,8 +18,14 @@ const state = {
     subjectRules: {},
     aiBusy: false,
     authSession: null,
-    resendTimer: null
+    resendTimer: null,
+    skipCompleted: true
 };
+const isDone = candidate => /^100\s*%?$/.test(String(candidate.progress || '').trim());
+// Selected lessons that bulk actions should process; 100% lessons drop out when skipping is on.
+function selectedCandidates() {
+    return state.candidates.filter(c => state.selected.has(candidateKey(c)) && !(state.skipCompleted && isDone(c)));
+}
 
 const elements = {
     pageContext: document.getElementById('page-context'),
@@ -55,7 +61,7 @@ Object.assign(elements, Object.fromEntries([
     'ai-tab', 'ai-view', 'ai-server-url', 'ai-server-token', 'ai-health', 'ai-current',
     'ai-status', 'ai-answers', 'api-record-toggle', 'api-export', 'discover-all', 'ai-selected', 'ai-submit-toggle', 'ai-read', 'ai-export-exercise', 'ai-export-result',
     'ai-login', 'ai-email', 'ai-send-code', 'ai-code-step', 'ai-code', 'ai-verify-code',
-    'ai-account', 'ai-account-email', 'ai-quota', 'ai-logout', 'ai-auth-status'
+    'ai-account', 'ai-account-email', 'ai-quota', 'ai-logout', 'ai-auth-status', 'skip-completed'
 ].map(id => [id.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), document.getElementById(id)])));
 
 async function init() {
@@ -64,6 +70,11 @@ async function init() {
     elements.search.addEventListener('input', renderLessons);
     elements.subjectFilter.addEventListener('change', renderLessons);
     elements.selectAll.addEventListener('change', toggleVisibleLessons);
+    elements.skipCompleted.addEventListener('change', () => {
+        state.skipCompleted = elements.skipCompleted.checked;
+        chrome.storage.local.set({ k12SkipCompleted: state.skipCompleted });
+        renderLessons();
+    });
     elements.completeSelected.addEventListener('click', completeSelectedLessons);
     elements.lessonsTab.addEventListener('click', () => showView('lessons'));
     elements.manageTab.addEventListener('click', () => showView('manage'));
@@ -98,9 +109,11 @@ async function init() {
         [AUTO_COMMENT_ENABLED_KEY]: false,
         [AUTO_COMMENT_PROFILE_KEY]: { name: '', className: '', studentId: '' },
         [SUBJECT_RULES_KEY]: {},
-        k12AiServerUrl: 'http://127.0.0.1:3210', k12AiServerToken: '', k12ApiRecording: false,
-        [AUTH_SESSION_KEY]: null, k12AuthEmail: ''
+        k12AiServerUrl: 'https://k12-ai-server-production.up.railway.app', k12AiServerToken: '', k12ApiRecording: false,
+        [AUTH_SESSION_KEY]: null, k12AuthEmail: '', k12SkipCompleted: true
     });
+    state.skipCompleted = settings.k12SkipCompleted !== false;
+    elements.skipCompleted.checked = state.skipCompleted;
     elements.aiServerUrl.value = settings.k12AiServerUrl;
     elements.aiServerToken.value = settings.k12AiServerToken;
     elements.aiEmail.value = settings.k12AuthEmail;
@@ -333,7 +346,7 @@ function candidateKey(candidate) {
 
 function renderLessons() {
     const candidates = getVisibleCandidates();
-    const completed = candidates.filter(c => /^100\s*%$/.test(c.progress || '')).length;
+    const completed = candidates.filter(isDone).length;
     elements.lessonStats.textContent = `${completed}/${candidates.length} đạt 100%`;
     elements.lessonList.replaceChildren();
     elements.emptyState.hidden = candidates.length > 0;
@@ -347,12 +360,13 @@ function renderLessons() {
         const key = candidateKey(candidate);
         const selected = state.selected.has(key);
         const result = state.results.get(key);
-        card.className = `lesson-card${selected ? ' selected' : ''}`;
+        const skipped = state.skipCompleted && isDone(candidate);
+        card.className = `lesson-card${selected && !skipped ? ' selected' : ''}${isDone(candidate) ? ' done' : ''}${skipped ? ' skipped' : ''}`;
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
-        checkbox.checked = selected;
-        checkbox.disabled = state.processing;
+        checkbox.checked = selected && !skipped;
+        checkbox.disabled = state.processing || skipped;
         checkbox.setAttribute('aria-label', `Chọn ${candidate.title}`);
         checkbox.addEventListener('change', () => {
             if (checkbox.checked) {
@@ -382,7 +396,13 @@ function renderLessons() {
                 candidate.coursewareId ? 'Courseware sẵn sàng' : 'Sẽ lấy thông tin khi xử lý'
             ].filter(Boolean).join(' · ');
         if (result) {
-            meta.style.color = result.ok ? '#0f766e' : '#b42318';
+            meta.style.color = result.ok ? 'var(--accent)' : 'var(--danger)';
+        }
+        if (isDone(candidate)) {
+            const badge = document.createElement('span');
+            badge.className = 'lesson-badge';
+            badge.textContent = skipped ? '100% · bỏ qua' : '100%';
+            title.append(' ', badge);
         }
         copy.append(title, meta);
 
@@ -402,7 +422,7 @@ function renderLessons() {
         elements.lessonList.append(card);
     });
 
-    const selectedCount = state.selected.size;
+    const selectedCount = selectedCandidates().length;
     elements.selectedCount.textContent = `${selectedCount} đã chọn`;
     elements.completeSelected.disabled = state.processing || state.aiBusy || selectedCount === 0;
     elements.previewSelected.disabled = state.processing || state.aiBusy || selectedCount === 0;
@@ -411,7 +431,7 @@ function renderLessons() {
     elements.discoverAll.disabled = state.processing || state.aiBusy;
     elements.refreshButton.disabled = state.processing;
 
-    const visibleKeys = candidates.map(candidateKey);
+    const visibleKeys = candidates.filter(c => !(state.skipCompleted && isDone(c))).map(candidateKey);
     const visibleSelected = visibleKeys.filter((key) => state.selected.has(key)).length;
     elements.selectAll.checked = visibleKeys.length > 0 && visibleSelected === visibleKeys.length;
     elements.selectAll.indeterminate = visibleSelected > 0 && visibleSelected < visibleKeys.length;
@@ -427,7 +447,7 @@ function previewItemMessage(entry) {
 
 async function previewSelectedWorkflow() {
     if (state.processing || state.aiBusy || !state.tabId) return;
-    const selected = state.candidates.filter((candidate) => state.selected.has(candidateKey(candidate)));
+    const selected = selectedCandidates();
     if (!selected.length) return;
 
     state.processing = true;
@@ -467,7 +487,7 @@ async function previewSelectedWorkflow() {
 }
 
 function toggleVisibleLessons() {
-    const visible = getVisibleCandidates();
+    const visible = getVisibleCandidates().filter(c => !(state.skipCompleted && isDone(c)));
     if (elements.selectAll.checked) {
         visible.forEach((candidate) => state.selected.add(candidateKey(candidate)));
     } else {
@@ -481,9 +501,7 @@ async function completeSelectedLessons() {
         return;
     }
 
-    const selected = state.candidates.filter((candidate) =>
-        state.selected.has(candidateKey(candidate))
-    );
+    const selected = selectedCandidates();
     if (selected.length === 0) {
         return;
     }
@@ -840,7 +858,7 @@ async function exportReadExercise() {
 
 async function solveSelectedExercises() {
     if (state.processing || state.aiBusy) return;
-    const selected = state.candidates.filter(c => state.selected.has(candidateKey(c)));
+    const selected = selectedCandidates();
     if (!selected.length) return;
     state.processing = true;
     renderLessons();
@@ -888,7 +906,7 @@ async function runSelectedWorkflow() {
     if (state.processing || state.aiBusy || !state.tabId) return;
     try { await ensureServerPermission(); }
     catch (error) { elements.bulkStatus.textContent = error.message; return; }
-    const selected = state.candidates.filter(c => state.selected.has(candidateKey(c)));
+    const selected = selectedCandidates();
     if (!selected.length) return;
     state.processing = true;
     renderLessons();
@@ -904,7 +922,7 @@ async function runSelectedWorkflow() {
                 }
                 const list = await chrome.runtime.sendMessage({ action: 'getCandidateExercises', candidate, tabId: sourceTabId });
                 if (!list?.ok) throw new Error(list?.message || 'Không tìm thấy nội dung bài học.');
-                const outcome = await K12Workflow.run(list.candidates, rule, {
+                const outcome = await K12Workflow.run(list.candidates, { ...rule, skipCompleted: state.skipCompleted }, {
                     prepare: item => chrome.runtime.sendMessage({ action: 'prepareCandidateExercise', candidate: item }),
                     complete: item => sendToTab(sourceTabId, { action: 'completeLessonFromSidebar', candidate: { ...item, subject: candidate.subject } }),
                     solve: solveExercise,

@@ -67,9 +67,10 @@ test('opens a javascript-link exercise through the bounded page action bridge', 
     const result = await h.message({ action: 'prepareExercise' });
     assert.equal(result.ok, true, result.message);
     assert.equal(result.exercise.questions.length, 20);
-    assert.equal(requests[0].data.type, 'k12-open-exercise');
-    assert.equal(requests[0].data.moduleIndex, 2);
-    assert.equal(requests[0].origin, 'https://hcm.k12online.vn');
+    const open = requests.filter(r => r.data.type === 'k12-open-exercise');
+    assert.equal(open.length, 1);
+    assert.equal(open[0].data.moduleIndex, 2);
+    assert.equal(open[0].origin, 'https://hcm.k12online.vn');
     assert.equal(h.requests.length, 0);
 });
 

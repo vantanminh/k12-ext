@@ -1,4 +1,4 @@
-# Chrome Web Store Privacy Form — 1.7.0
+# Chrome Web Store Privacy Form — 1.8.0
 
 Nội dung tham khảo cho biểu mẫu hiện hành khi phát hành. Chưa gửi duyệt Store.
 
@@ -9,7 +9,8 @@ K12 Video Runner giúp quản lý bài học trên hcm.k12online.vn: quét toàn
 ## Quyền
 
 - `https://hcm.k12online.vn/*`: đọc danh sách/nội dung/form và gửi các thao tác K12 bằng phiên đăng nhập hiện tại.
-- Localhost HTTP: kết nối backend Rust do người dùng chạy.
+- `https://k12-ai-server-production.up.railway.app/*`: backend AI mặc định của tiện ích (đăng nhập email, giải bài).
+- Localhost HTTP: kết nối backend Rust do người dùng tự chạy.
 - `optional_host_permissions: https://*/*`: yêu cầu quyền cho đúng origin HTTPS người dùng nhập làm backend, ví dụ dịch vụ Railway của họ. Không yêu cầu quyền toàn bộ HTTPS khi cài.
 - `sidePanel`: mở giao diện quản lý.
 - `storage`: lưu hồ sơ tùy chọn, quy tắc môn, cấu hình backend, cache tối đa 10 đề/đáp án, lịch sử chống bình luận trùng và log chẩn đoán tùy chọn.

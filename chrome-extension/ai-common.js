@@ -99,7 +99,7 @@
     }
 
     function serverUrl(value) {
-        const url = new URL(value || 'http://127.0.0.1:3210');
+        const url = new URL(value || 'https://k12-ai-server-production.up.railway.app');
         const local = url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname);
         const remote = url.protocol === 'https:';
         if ((!local && !remote)
@@ -170,8 +170,8 @@
                         || (rule.exerciseMode === 'submit' && !completed)
                 };
             }
-            if (coursewareType === 'Courseware.PDF' || coursewareType === 'Courseware.Video') {
-                const label = coursewareType === 'Courseware.PDF' ? 'tài liệu' : 'video';
+            if (['Courseware.PDF', 'Courseware.Video', 'Courseware.Content'].includes(coursewareType)) {
+                const label = coursewareType === 'Courseware.Video' ? 'video' : 'tài liệu';
                 const shouldSkip = !rule.view || (completed && !rule.materialComment);
                 return {
                     item, coursewareType, completed,

@@ -1,4 +1,4 @@
-# K12 Video Runner 1.7.0
+# K12 Video Runner 1.8.0
 
 Tiện ích Chrome quản lý bài học K12 từ trang **Bài giảng học tự do**. Backend Rust nhận đề, gọi OpenAI và trả đáp án. Cookie và token đăng nhập K12 được giữ trong trình duyệt.
 

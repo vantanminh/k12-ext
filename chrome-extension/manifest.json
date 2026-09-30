@@ -29,6 +29,7 @@
         "https://hcm.k12online.vn/*"
       ],
       "js": [
+        "api-observer.js",
         "ai-common.js",
         "content.js",
         "exercise-reader.js"

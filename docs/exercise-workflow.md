@@ -52,6 +52,8 @@ Comment dùng API `Social/Comment/edit`. Lịch sử cục bộ ghi pending trư
 
 Recorder chỉ hoạt động khi bật, ghi fetch/XHR LMS và portal POST có service LMS. HTML chỉ ghi độ dài/số dòng/số nhóm câu, không giữ toàn bộ HTML. Log che token, cookie và trường tài khoản; tối đa 80 entries/1.5 MB, xuất JSON cục bộ. Không gửi log cho AI. HAR DevTools là dữ liệu debug riêng và có thể chứa thông tin nhạy cảm; không đưa vào Git hoặc gói phát hành.
 
+Recorder được nạp cả MAIN (K12) và ISOLATED (tiện ích). Lượt thử cuối đã xuất 7 entries; entry mới là POST `Lesson/learn` do tiện ích gửi từ trang chủ, HTTP 200, securityToken đã che. Hai entry phân trang thực tế có service `selectAllFreeLearn` và chỉ giữ metadata HTML.
+
 ## Kiểm thử và triển khai
 
 - 52 test JavaScript và 15 test Rust đã qua. Regression bao gồm tên tiếng Việt/emoji, PDF giới thiệu có bài tập bên cạnh, danh sách chưa hydrate, phân trang thiếu, form PDF/Đúng-Sai tải muộn, bảng/hình, validation và ghi log có che dữ liệu. Nút Làm bài dùng bridge MAIN gọi phương thức K12 đã có, không eval hoặc điều hướng javascript:. Trang kết quả đã nộp và yêu cầu nội dung tuần tự được nhận diện trước khi mở lượt làm.

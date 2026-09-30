@@ -1,4 +1,5 @@
-// Runs in the page's MAIN world. Recording is opt-in and does not submit requests.
+// Runs in MAIN and ISOLATED worlds to observe both K12 and extension requests.
+// Recording is opt-in and does not submit requests.
 (() => {
     if (window.__k12ApiObserverInstalled) return;
     window.__k12ApiObserverInstalled = true;

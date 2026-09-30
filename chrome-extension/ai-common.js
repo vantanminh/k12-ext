@@ -99,7 +99,7 @@
     }
 
     function serverUrl(value) {
-        const url = new URL(value || 'http://127.0.0.1:3210');
+        const url = new URL(value || 'https://k12-ai-server-production.up.railway.app');
         const local = url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname);
         const remote = url.protocol === 'https:';
         if ((!local && !remote)

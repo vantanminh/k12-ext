@@ -42,6 +42,7 @@
   ],
   "host_permissions": [
     "https://hcm.k12online.vn/*",
+    "https://k12-ai-server-production.up.railway.app/*",
     "http://127.0.0.1/*",
     "http://localhost/*"
   ],

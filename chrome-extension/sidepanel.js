@@ -109,7 +109,7 @@ async function init() {
         [AUTO_COMMENT_ENABLED_KEY]: false,
         [AUTO_COMMENT_PROFILE_KEY]: { name: '', className: '', studentId: '' },
         [SUBJECT_RULES_KEY]: {},
-        k12AiServerUrl: 'http://127.0.0.1:3210', k12AiServerToken: '', k12ApiRecording: false,
+        k12AiServerUrl: 'https://k12-ai-server-production.up.railway.app', k12AiServerToken: '', k12ApiRecording: false,
         [AUTH_SESSION_KEY]: null, k12AuthEmail: '', k12SkipCompleted: true
     });
     state.skipCompleted = settings.k12SkipCompleted !== false;

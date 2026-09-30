@@ -3,13 +3,15 @@
 ## Bằng chứng thử trên Chrome Beta
 
 - Trang **Bài giảng học tự do** công bố 48 bài, 20 bài mỗi trang. Tiện ích đã quét đủ 3 trang và hiển thị đúng tên bài, môn học, tiến độ; 16 bài đã đạt 100% trước khi thử. Không coi đáp án AI là bài đã hoàn thành.
+- Sau khi đăng nhập lại trên Chrome Beta, sidebar tự quét đủ 48/48 bài từ 3 trang và vẫn báo 16/48 bài đã đạt 100%. Chọn Hóa 12.7 chạy bước đọc bài tập, đọc được một bài có đáp án đã lưu; giao diện xác nhận chưa nộp đáp án. Nút “Quét lại toàn bộ danh sách” chạy lại thao tác phát hiện, không tự chọn hoặc nộp bài.
 - Hóa 12.4: lesson `6ab7e04a1d5332cbc90330b7`, exercise `6ab7e04a1d5332cbc90330ba`. Đề PDF có 20 câu, đáp án form 1/2/3/4 tương ứng A/B/C/D. Bài này đã đạt 100% và có điểm trước khi thử nên không nộp lại chỉ để kiểm tra.
 - Lượt mở Hóa 12.4 từ trang chủ đã tìm được nội dung PDF và bài tập BT 12.4 bên cạnh. Trang bài tập hiện là kết quả 10/10, 20/20, có nút Làm lại; tiện ích không tự tạo lượt làm lại để đọc đề.
-- Hóa 12.6 từ trang chủ cũng tìm được BT 12.6, nhưng K12 chặn bằng “Bạn cần hoàn thành các nội dung theo thứ tự” khi tài liệu trước đó còn 0%. Reader báo điều kiện này rõ ràng; workflow theo môn cần bật view để xử lý tài liệu trước bài tập. Chưa đánh dấu tài liệu này trong lần thử.
+- Hóa 12.6 từ trang chủ cũng tìm được BT 12.6, nhưng K12 chặn bằng “Bạn cần hoàn thành các nội dung theo thứ tự” khi tài liệu trước đó còn 0%. Reader báo điều kiện này rõ ràng; workflow theo môn cần bật view để xử lý tài liệu trước bài tập. Lượt đọc riêng ngày 30/09 tiếp tục xác nhận trạng thái này và không gửi request ghi tiến độ.
 - Hóa 12.7: lesson `6ab7e0713409d4fad702dc89`, exercise `6ab7e0713409d4fad702dc8b`. Form văn bản tải nội dung muộn: 10 câu × 4 ý Đúng/Sai, kèm 6 hình và bảng. Reader xuất đủ 40 ý, 6 URL hình; JSON khoảng 32 KiB.
 - OpenAI thật đã trả đủ đáp án cho PDF 20 câu và văn bản 40 ý. Lượt **trong tiện ích** với Hóa 12.7 hiển thị đủ 40 đáp án, độ tin cậy thấp nhất 88%, trạng thái “Đã nhận đáp án AI. Chưa nộp bài.”
 - Đã thử chọn Hóa 12.7 ngay trên trang Bài giảng học tự do: tiện ích mở tab nền, tìm bài tập bên trong, đọc đủ đề, khớp cache đáp án và đóng tab đã tạo. Thẻ bài báo “1 bài tập đã có đáp án; chưa nộp”, tổng “Xử lý xong 1/1 bài học. Chưa nộp đáp án lên K12.”
 - **Chưa xác minh thực tế bước nộp Hóa 12.7 và bình luận.** Test mô phỏng không thay cho bằng chứng K12 đã nhận bài. Hồ sơ Tên/Lớp/Mã số chưa được cung cấp; đang chờ xác nhận thao tác nộp thử.
+- Lượt kiểm tra ngày 30/09/2026, trang chủ K12 còn hiện danh sách đã đăng nhập; khi mở route danh sách bài tập riêng, K12 chuyển sang trang đăng nhập. Không đăng nhập lại bằng công cụ, nên phần mạng trực tiếp chưa thử tiếp trong lượt này.
 
 HAR, HTML, JSON đề/đáp án thật và bảng duyệt đáp án nằm trong `api-captures/`, được Git bỏ qua. Fixture test bỏ thông tin người dùng và dùng token giả.
 
@@ -21,6 +23,7 @@ HAR, HTML, JSON đề/đáp án thật và bảng duyệt đáp án nằm trong 
 4. Form Đúng/Sai ban đầu chỉ có placeholder. Reader chờ đủ câu/ý, giữ cột và hàng trong bảng, gắn ID nhóm cho hình minh họa.
 5. OpenAI trả HTTP 400 `invalid_value`, param `url`, “Error while downloading file.” khi tự tải hình K12. Rust giờ tải hình công khai rồi gửi base64. Một file đuôi PNG và Content-Type PNG thực tế là JPEG; server nhận dạng định dạng từ byte ảnh, không dựa vào tên file.
 6. `start.ps1` trước đây chứa tiếng Việt UTF-8 không BOM, khiến Windows PowerShell 5.1 đọc sai dấu và lỗi parse. Script dùng ASCII, build incremental bản nguồn trước khi chạy; tránh chạy lại executable cũ.
+7. CSP của K12 chặn phân trang giả lập khi thẻ số trang còn `href="javascript:void(0)"`. Tiện ích giờ tạm bỏ `href` trong lúc gửi click để handler phân trang của K12 chạy, rồi khôi phục giá trị ban đầu; quét trực tiếp sau đăng nhập đã đọc đủ 48 bài.
 
 ## API và dữ liệu
 
@@ -56,7 +59,7 @@ Recorder được nạp cả MAIN (K12) và ISOLATED (tiện ích). Lượt th�
 
 ## Kiểm thử và triển khai
 
-- 52 test JavaScript và 15 test Rust đã qua. Regression bao gồm tên tiếng Việt/emoji, PDF giới thiệu có bài tập bên cạnh, danh sách chưa hydrate, phân trang thiếu, form PDF/Đúng-Sai tải muộn, bảng/hình, validation và ghi log có che dữ liệu. Nút Làm bài dùng bridge MAIN gọi phương thức K12 đã có, không eval hoặc điều hướng javascript:. Trang kết quả đã nộp và yêu cầu nội dung tuần tự được nhận diện trước khi mở lượt làm.
+- 60 test JavaScript và 15 test Rust đã qua. Regression bao gồm tên tiếng Việt/emoji, PDF giới thiệu có bài tập bên cạnh, danh sách chưa hydrate, phân trang thiếu và `javascript:` bị CSP chặn, tự quét sidebar, form PDF/Đúng-Sai tải muộn, bảng/hình, validation và ghi log có che dữ liệu. Nút Làm bài dùng bridge MAIN gọi phương thức K12 đã có, không eval hoặc điều hướng javascript:. Trang kết quả đã nộp và yêu cầu nội dung tuần tự được nhận diện trước khi mở lượt làm. Xem trước workflow được kiểm thử để chỉ đọc metadata, không gửi ghi K12.
 - Test workflow xác minh thứ tự solve → submit → kiểm tra 100% → comment, comment-only không submit, bài đã 100% được bỏ qua, và tab nền được đóng. Network K12 trong test được giả lập.
 - Test Rust kiểm tra auth, schema, body quá lớn, ID đáp án, lỗi OpenAI, MIME JPEG bị ghi nhầm PNG, không gửi credentials khi tải ảnh, HTML/redirect/file quá lớn bị từ chối. Cargo fmt và clippy đã qua.
 - Có Dockerfile, railway.json, bind PORT và healthcheck cho Railway. Chưa deploy; Docker daemon trên máy chưa hoạt động nên chưa thử image.

@@ -36,6 +36,7 @@ const elements = {
     lessonList: document.getElementById('lesson-list'),
     emptyState: document.getElementById('empty-state'),
     completeSelected: document.getElementById('complete-selected'),
+    previewSelected: document.getElementById('preview-selected'),
     bulkStatus: document.getElementById('bulk-status'),
     quickButtonToggle: document.getElementById('quick-button-toggle'),
     autoCommentToggle: document.getElementById('auto-comment-toggle'),
@@ -64,6 +65,7 @@ async function init() {
     elements.aiTab.addEventListener('click', () => showView('ai'));
     elements.discoverAll.addEventListener('click', discoverAllLessons);
     elements.aiSelected.addEventListener('click', solveSelectedExercises);
+    elements.previewSelected.addEventListener('click', previewSelectedWorkflow);
     elements.workflowSelected.addEventListener('click', runSelectedWorkflow);
     elements.aiCurrent.addEventListener('click', solveCurrentExercise);
     elements.aiRead.addEventListener('click', inspectCurrentExercise);
@@ -185,56 +187,61 @@ async function sendToTab(tabId, message) {
 }
 
 async function refreshLessons() {
-    if (state.processing) {
-        return;
-    }
-
+    if (state.processing) return;
+    state.processing = true;
+    renderLessons();
     elements.refreshButton.disabled = true;
     elements.scanStatus.textContent = 'Đang quét danh sách bài học...';
     elements.bulkStatus.textContent = '';
     elements.bulkStatus.className = 'bulk-status';
 
-    const tab = await getActiveTab();
-    state.tabId = tab ? tab.id : null;
-    state.pageUrl = tab && tab.url ? tab.url : '';
+    try {
+        const tab = await getActiveTab();
+        state.tabId = tab ? tab.id : null;
+        state.pageUrl = tab && tab.url ? tab.url : '';
 
-    if (!tab || !tab.url || !isK12Url(tab.url)) {
-        elements.pageContext.textContent = 'Mở trang hcm.k12online.vn để bắt đầu.';
-        elements.scanStatus.textContent = 'Sidebar chỉ đọc danh sách trên trang K12 hiện tại.';
-        state.candidates = [];
-        state.selected.clear();
+        if (!tab || !tab.url || !isK12Url(tab.url)) {
+            elements.pageContext.textContent = 'Mở trang hcm.k12online.vn để bắt đầu.';
+            elements.scanStatus.textContent = 'Sidebar chỉ đọc danh sách trên trang K12 hiện tại.';
+            state.candidates = [];
+            state.selected.clear();
+            state.results.clear();
+            return;
+        }
+
+        elements.pageContext.textContent = tab.title || 'hcm.k12online.vn';
+        const scanAll = K12AI.isFreeLessonListUrl(tab.url);
+        if (scanAll) elements.scanStatus.textContent = 'Đang quét tất cả trang của danh sách bài học...';
+        const response = scanAll
+            ? await chrome.runtime.sendMessage({ action: 'discoverAllLessons', tabId: tab.id })
+            : await sendToTab(tab.id, { action: 'getLessonCandidates' });
+
+        if (!response || response.ok === false && !Array.isArray(response.lessons)) {
+            elements.scanStatus.textContent = response && response.message
+                ? response.message
+                : 'Không đọc được trang. Hãy tải lại tab K12 rồi thử lại.';
+            state.candidates = [];
+            state.selected.clear();
+            state.results.clear();
+            return;
+        }
+
+        const previousSelection = new Set(state.selected);
+        state.candidates = Array.isArray(response.lessons) ? response.lessons : [];
+        renderSubjectControls();
+        state.selected = new Set(state.candidates
+            .filter((candidate) => previousSelection.has(candidate.key))
+            .map((candidate) => candidate.key));
         state.results.clear();
+        elements.scanStatus.textContent = response.message
+            || `${state.candidates.length} bài học tìm thấy trên trang.`;
+    } catch (error) {
+        elements.scanStatus.textContent = error.message || 'Không đọc được danh sách bài học.';
+    } finally {
+        state.processing = false;
         renderLessons();
         elements.refreshButton.disabled = false;
-        return;
     }
-
-    elements.pageContext.textContent = tab.title || 'hcm.k12online.vn';
-    const response = await sendToTab(tab.id, { action: 'getLessonCandidates' });
-
-    if (!response || response.ok === false) {
-        elements.scanStatus.textContent = response && response.message
-            ? response.message
-            : 'Không đọc được trang. Hãy tải lại tab K12 rồi thử lại.';
-        state.candidates = [];
-        state.selected.clear();
-        state.results.clear();
-        renderLessons();
-        elements.refreshButton.disabled = false;
-        return;
-    }
-
-    const previousSelection = new Set(state.selected);
-    state.candidates = Array.isArray(response.lessons) ? response.lessons : [];
-    renderSubjectControls();
-    state.selected = new Set(state.candidates
-        .filter((candidate) => previousSelection.has(candidate.key))
-        .map((candidate) => candidate.key));
-    state.results.clear();
-    elements.scanStatus.textContent = response.message
-        || `${state.candidates.length} bài học tìm thấy trên trang.`;
-    renderLessons();
-    elements.refreshButton.disabled = false;
 }
 
 function getVisibleCandidates() {
@@ -383,6 +390,7 @@ function renderLessons() {
     const selectedCount = state.selected.size;
     elements.selectedCount.textContent = `${selectedCount} đã chọn`;
     elements.completeSelected.disabled = state.processing || state.aiBusy || selectedCount === 0;
+    elements.previewSelected.disabled = state.processing || state.aiBusy || selectedCount === 0;
     elements.aiSelected.disabled = state.processing || state.aiBusy || selectedCount === 0;
     elements.workflowSelected.disabled = state.processing || state.aiBusy || selectedCount === 0;
     elements.discoverAll.disabled = state.processing || state.aiBusy;
@@ -393,6 +401,54 @@ function renderLessons() {
     elements.selectAll.checked = visibleKeys.length > 0 && visibleSelected === visibleKeys.length;
     elements.selectAll.indeterminate = visibleSelected > 0 && visibleSelected < visibleKeys.length;
     elements.selectAll.disabled = state.processing || visibleKeys.length === 0;
+}
+
+function previewItemMessage(entry) {
+    const name = entry.item.title || entry.item.coursewareId || 'Nội dung bài học';
+    const stateLabel = entry.completed ? 'đã 100%' : 'chưa hoàn thành';
+    const profileWarning = entry.requiresCommentProfile ? ' Cần nhập Tên, Lớp, Mã số trước khi chạy.' : '';
+    return `${name}: ${entry.coursewareType} — ${entry.action} (${stateLabel}).${profileWarning}`;
+}
+
+async function previewSelectedWorkflow() {
+    if (state.processing || state.aiBusy || !state.tabId) return;
+    const selected = state.candidates.filter((candidate) => state.selected.has(candidateKey(candidate)));
+    if (!selected.length) return;
+
+    state.processing = true;
+    elements.bulkStatus.className = 'bulk-status';
+    renderLessons();
+    let inspected = 0;
+    let needsAttention = 0;
+    try {
+        for (const [index, candidate] of selected.entries()) {
+            elements.bulkStatus.textContent = `Xem trước ${index + 1}/${selected.length}: ${candidate.title}`;
+            try {
+                const list = await chrome.runtime.sendMessage({ action: 'getCandidateExercises', candidate, tabId: state.tabId });
+                if (!list?.ok || !Array.isArray(list.candidates)) {
+                    throw new Error(list?.message || 'Không tìm thấy nội dung bài học.');
+                }
+                const plan = K12AI.workflowPreview(list.candidates, state.subjectRules[candidate.subject || ''], hasCompleteCommentProfile(state.commentProfile));
+                const uncertain = plan.filter(entry => entry.unsupported || entry.requiresCommentProfile).length;
+                needsAttention += uncertain;
+                state.results.set(candidateKey(candidate), {
+                    ok: uncertain === 0,
+                    kind: 'preview',
+                    message: `Xem trước ${plan.length} nội dung. ${plan.map(previewItemMessage).join(' ')}`
+                });
+                inspected += 1;
+            } catch (error) {
+                needsAttention += 1;
+                state.results.set(candidateKey(candidate), { ok: false, kind: 'preview', message: `Không xem trước được: ${error.message}` });
+            }
+            renderLessons();
+        }
+        elements.bulkStatus.textContent = `Đã xem trước ${inspected}/${selected.length} bài học. Không gửi yêu cầu đánh dấu, nộp đáp án hoặc bình luận lên K12.${needsAttention ? ` Có ${needsAttention} mục cần xem lại.` : ''}`;
+        elements.bulkStatus.className = needsAttention ? 'bulk-status error' : 'bulk-status success';
+    } finally {
+        state.processing = false;
+        renderLessons();
+    }
 }
 
 function toggleVisibleLessons() {

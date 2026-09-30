@@ -44,6 +44,13 @@ test('server target accepts localhost HTTP or HTTPS deployment without URL crede
         assert.throws(() => ai.serverUrl(url));
     }
 });
+test('only the K12 free-learning home triggers whole-list discovery', () => {
+    assert.equal(ai.isFreeLessonListUrl('https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/teacherList?site=2003644'), true);
+    assert.equal(ai.isFreeLessonListUrl('https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/teacherList/?site=2003644'), true);
+    assert.equal(ai.isFreeLessonListUrl('https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/list?site=2003644'), false);
+    assert.equal(ai.isFreeLessonListUrl('https://evil.test/79000729/page/LMS/Lesson/Student/teacherList'), false);
+    assert.equal(ai.isFreeLessonListUrl('not a URL'), false);
+});
 test('image references are restricted to K12 uploads and answer summaries use native labels', () => {
     const id = '6ab7e0713409d4fad702dc8c';
     const item = { title: 'Hóa', questions: [{ id: `${id}:1`, kind: 'single_choice', prompt: 'Ý a', choices: [

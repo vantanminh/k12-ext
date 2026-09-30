@@ -849,6 +849,20 @@
             .replace(/^Môn học:\s*/i, '').trim();
     }
 
+    function clickPaginationLinkWithoutJavascriptNavigation(link) {
+        const href = link.getAttribute('href');
+        const javascriptHref = typeof href === 'string' && /^\s*javascript:/i.test(href);
+        const preventNavigation = event => event.preventDefault();
+        link.addEventListener('click', preventNavigation, true);
+        if (javascriptHref) link.removeAttribute('href');
+        try {
+            link.click();
+        } finally {
+            if (javascriptHref) link.setAttribute('href', href);
+            link.removeEventListener('click', preventNavigation, true);
+        }
+    }
+
     async function submitAutomaticComment(commentContext, answerSummary = '', subject = '') {
         const settings = await chrome.storage.local.get({
             k12AutoCommentEnabled: false,
@@ -1258,12 +1272,9 @@
                     return false;
                 }
                 const before = getLessonCandidates().map(c => c.key).join('|');
-                // K12's pagination listener handles the click. Prevent its
-                // javascript:void(0) URL from navigating in the isolated world.
-                const preventNavigation = event => event.preventDefault();
-                link.addEventListener('click', preventNavigation);
-                try { link.click(); }
-                finally { link.removeEventListener('click', preventNavigation); }
+                // K12 handles the click; temporarily remove javascript: hrefs
+                // because Chromium blocks those URLs under the page CSP.
+                clickPaginationLinkWithoutJavascriptNavigation(link);
                 const started = Date.now();
                 let lastSignature = '';
                 let stable = 0;

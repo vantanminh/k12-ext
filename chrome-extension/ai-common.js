@@ -109,6 +109,16 @@
         return url.origin;
     }
 
+    function isFreeLessonListUrl(value) {
+        try {
+            const url = new URL(value);
+            return url.origin === 'https://hcm.k12online.vn'
+                && /^\/\d+\/page\/LMS\/Lesson\/Student\/teacherList\/?$/i.test(url.pathname);
+        } catch (_) {
+            return false;
+        }
+    }
+
     function subjectRule(saved, defaultComment = false) {
         const modes = ['skip', 'submit', 'comment', 'both'];
         const exerciseMode = modes.includes(saved?.exerciseMode) ? saved.exerciseMode
@@ -117,6 +127,47 @@
         return { exerciseMode, view: saved?.view !== false,
             comment: ['comment', 'both'].includes(exerciseMode),
             materialComment: saved ? (saved.materialComment ?? saved.comment) === true : defaultComment };
+    }
+
+    function workflowPreview(items, savedRule, hasCommentProfile = true) {
+        const rule = subjectRule(savedRule);
+        if (!Array.isArray(items)) throw new Error('Danh sách nội dung bài học không hợp lệ.');
+        return items.map((item) => {
+            const coursewareType = String(item?.coursewareType || '').trim();
+            const completed = /^100\s*%?$/.test(String(item?.progress || '').trim());
+            if (coursewareType === 'Courseware.Exercise') {
+                const action = rule.exerciseMode === 'skip' ? 'Bỏ qua bài tập'
+                    : completed && rule.exerciseMode === 'submit' ? 'Bỏ qua bài tập: K12 đã ghi nhận 100%'
+                    : rule.exerciseMode === 'submit' ? 'Đọc đề, gọi AI, nộp đáp án'
+                    : rule.exerciseMode === 'comment' ? 'Đọc đề, gọi AI, gửi bình luận đáp án'
+                    : 'Đọc đề, gọi AI, nộp đáp án và gửi bình luận';
+                return {
+                    item, coursewareType, completed, action,
+                    requiresCommentProfile: rule.comment && !hasCommentProfile,
+                    writesToK12: ['both', 'comment'].includes(rule.exerciseMode)
+                        || (rule.exerciseMode === 'submit' && !completed)
+                };
+            }
+            if (coursewareType === 'Courseware.PDF' || coursewareType === 'Courseware.Video') {
+                const label = coursewareType === 'Courseware.PDF' ? 'tài liệu' : 'video';
+                const shouldSkip = !rule.view || (completed && !rule.materialComment);
+                return {
+                    item, coursewareType, completed,
+                    action: shouldSkip
+                        ? completed ? `Bỏ qua ${label}: K12 đã ghi nhận 100%` : `Bỏ qua ${label}`
+                        : `Đánh dấu ${label} đã xem${rule.materialComment ? ' và gửi bình luận' : ''}`,
+                    requiresCommentProfile: !shouldSkip && rule.materialComment && !hasCommentProfile,
+                    writesToK12: !shouldSkip
+                };
+            }
+            return {
+                item, coursewareType: coursewareType || 'chưa xác định', completed,
+                action: 'Cần đọc loại nội dung trước khi có thể xử lý',
+                requiresCommentProfile: false,
+                writesToK12: false,
+                unsupported: true
+            };
+        });
     }
 
     function redact(value, depth = 0) {
@@ -134,5 +185,5 @@
         return entry && (/^\/api\/LMS\//.test(entry.path)
             || (/^\/\d+\/$/.test(entry.path) && /^LMS\./.test(String(entry.request?.service || ''))));
     }
-    globalThis.K12AI = { plainText, validateExercise, validateAnswers, formatAnswerSummary, serverUrl, pdfUrl, imageUrl, subjectRule, redact, recordableApiEntry };
+    globalThis.K12AI = { plainText, validateExercise, validateAnswers, formatAnswerSummary, serverUrl, isFreeLessonListUrl, pdfUrl, imageUrl, subjectRule, workflowPreview, redact, recordableApiEntry };
 })();

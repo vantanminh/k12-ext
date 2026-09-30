@@ -1,4 +1,4 @@
-# K12 Video Runner 1.6.0
+# K12 Video Runner 1.6.2
 
 Tiện ích Chrome quản lý bài học K12 từ trang **Bài giảng học tự do**. Backend Rust nhận đề, gọi OpenAI và trả đáp án. Cookie và token đăng nhập K12 được giữ trong trình duyệt.
 
@@ -18,6 +18,7 @@ Chrome cần thư mục đã giải nén, không nạp trực tiếp ZIP. Workfl
 - **Tìm bài trong toàn bộ danh sách** quét mọi trang và đối chiếu tổng số bài K12 công bố. Đã thử trực tiếp: 48 bài trên 3 trang, có tên môn và tiến độ.
 - Lọc môn, tìm tên, chọn bài. Mục **Quản lý** cấu hình riêng cho từng môn.
 - **Chạy quy trình theo môn cho bài đã chọn** mở tab nền của từng bài, nhận diện các tài liệu/video/bài tập bên trong rồi thực hiện quy tắc đã chọn. Các tab do tiện ích tạo sẽ được đóng sau khi xử lý.
+- **Xem trước quy trình** chỉ đọc cấu trúc bài và hiện rõ mỗi tài liệu, video, bài tập cùng thao tác dự kiến. Nút này không đánh dấu tiến độ, nộp đáp án hoặc gửi bình luận lên K12.
 - Tiến độ 100% chỉ được hiển thị khi K12 xác nhận đúng nội dung. Lỗi từng bài được giữ trên thẻ để xem lại.
 
 ## Quy tắc theo môn

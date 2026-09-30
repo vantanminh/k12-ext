@@ -17,7 +17,9 @@
         confirmedVideoPage: false,
         confirmedUrl: '',
         guardTimer: null,
-        quickButtonEnabled: true
+        quickButtonEnabled: true,
+        // The extension is usable only after email login in the side panel.
+        signedIn: false
     };
 
     function isCoursewarePageUrl() {
@@ -1133,7 +1135,7 @@
 
     function ensureUi() {
         const exercisePage = isCoursewarePageUrl() && getCoursewareType(getInlineScriptSource(), document, location.href) === 'Courseware.Exercise';
-        if (!state.quickButtonEnabled || !isCoursewarePageUrl() || exercisePage) {
+        if (!state.quickButtonEnabled || !state.signedIn || !isCoursewarePageUrl() || exercisePage) {
             state.confirmedVideoPage = false;
             state.confirmedUrl = '';
             removeUi();
@@ -1152,7 +1154,7 @@
         }
 
         state.guardTimer = setInterval(() => {
-            if (!state.quickButtonEnabled || !isCoursewarePageUrl()) {
+            if (!state.quickButtonEnabled || !state.signedIn || !isCoursewarePageUrl()) {
                 stopGuard();
                 removeUi();
                 return;
@@ -1404,14 +1406,15 @@
         observeDomChanges();
         setupMessageListener();
         chrome.storage.onChanged.addListener((changes, areaName) => {
-            if (areaName === 'local' && changes.k12QuickButtonEnabled) {
-                state.quickButtonEnabled = changes.k12QuickButtonEnabled.newValue !== false;
-                ensureUi();
-            }
+            if (areaName !== 'local') return;
+            if (changes.k12QuickButtonEnabled) state.quickButtonEnabled = changes.k12QuickButtonEnabled.newValue !== false;
+            if (changes.k12AuthSession) state.signedIn = Boolean(changes.k12AuthSession.newValue?.token);
+            if (changes.k12QuickButtonEnabled || changes.k12AuthSession) ensureUi();
         });
-        chrome.storage.local.get({ k12QuickButtonEnabled: true })
+        chrome.storage.local.get({ k12QuickButtonEnabled: true, k12AuthSession: null })
             .then((settings) => {
                 state.quickButtonEnabled = settings.k12QuickButtonEnabled !== false;
+                state.signedIn = Boolean(settings.k12AuthSession?.token);
                 ensureUi();
             })
             .catch(() => ensureUi());

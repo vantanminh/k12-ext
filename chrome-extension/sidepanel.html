@@ -19,13 +19,48 @@
             </button>
         </header>
 
-        <nav class="tabs" aria-label="Điều hướng sidebar">
+        <section id="auth-gate" class="view active" hidden>
+            <div class="section-heading"><div>
+                <h2>Đăng nhập để sử dụng</h2>
+                <p>Bạn cần đăng nhập bằng email trước khi dùng K12 Video Runner.</p>
+            </div></div>
+            <div class="settings-card comment-profile-fields">
+                <div id="ai-login" class="stack">
+                    <label class="profile-field" for="ai-email"><span>Email đăng nhập</span>
+                        <input id="ai-email" type="email" inputmode="email" autocomplete="email" placeholder="ban@example.com">
+                    </label>
+                    <button id="ai-send-code" class="secondary-button" type="button">Gửi mã đăng nhập</button>
+                    <div id="ai-code-step" class="stack" hidden>
+                        <label class="profile-field" for="ai-code"><span>Mã 6 số trong email</span>
+                            <input id="ai-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="123456">
+                        </label>
+                        <button id="ai-verify-code" class="primary-button" type="button">Đăng nhập</button>
+                    </div>
+                    <p class="comment-preview-line">Không cần mật khẩu. Mã có hiệu lực 10 phút.</p>
+                </div>
+                <p id="ai-auth-status" class="bulk-status" aria-live="polite"></p>
+                <details class="server-settings">
+                    <summary>Cấu hình server</summary>
+                    <div class="stack">
+                        <label class="profile-field" for="ai-server-url"><span>Server AI</span>
+                            <input id="ai-server-url" type="url" value="https://k12-ai-server-production.up.railway.app" autocomplete="off">
+                        </label>
+                        <label class="profile-field" for="ai-server-token"><span>Token quản trị (không bắt buộc)</span>
+                            <input id="ai-server-token" type="password" autocomplete="off" placeholder="K12_SERVER_TOKEN">
+                        </label>
+                        <p class="comment-preview-line">Người dùng thường chỉ cần đăng nhập email. Token quản trị bỏ qua giới hạn lượt giải.</p>
+                    </div>
+                </details>
+            </div>
+        </section>
+
+        <nav id="app-tabs" class="tabs" hidden aria-label="Điều hướng sidebar">
             <button class="tab active" id="lessons-tab" type="button" aria-selected="true">Chọn bài</button>
             <button class="tab" id="manage-tab" type="button" aria-selected="false">Quản lý</button>
             <button class="tab" id="ai-tab" type="button" aria-selected="false">AI bài tập</button>
         </nav>
 
-        <main>
+        <main id="app-main" hidden>
             <section id="lessons-view" class="view active" aria-labelledby="lessons-tab">
                 <div class="section-heading">
                     <div>
@@ -83,39 +118,13 @@
                     <p>Đọc đề K12, giải qua server Rust và xem đáp án.</p>
                 </div></div>
                 <div class="settings-card comment-profile-fields">
-                    <div id="ai-login" class="stack">
-                        <label class="profile-field" for="ai-email"><span>Email đăng nhập</span>
-                            <input id="ai-email" type="email" inputmode="email" autocomplete="email" placeholder="ban@example.com">
-                        </label>
-                        <button id="ai-send-code" class="secondary-button" type="button">Gửi mã đăng nhập</button>
-                        <div id="ai-code-step" class="stack" hidden>
-                            <label class="profile-field" for="ai-code"><span>Mã 6 số trong email</span>
-                                <input id="ai-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="123456">
-                            </label>
-                            <button id="ai-verify-code" class="primary-button" type="button">Đăng nhập</button>
-                        </div>
-                        <p class="comment-preview-line">Không cần mật khẩu. Mã có hiệu lực 10 phút.</p>
-                    </div>
                     <div id="ai-account" class="stack" hidden>
                         <p class="comment-preview-line">Đã đăng nhập: <span id="ai-account-email"></span></p>
                         <p id="ai-quota" class="comment-preview-line"></p>
                         <button id="ai-logout" class="secondary-button" type="button">Đăng xuất</button>
                     </div>
-                    <p id="ai-auth-status" class="bulk-status" aria-live="polite"></p>
                 </div>
                 <div class="settings-card comment-profile-fields">
-                    <details class="server-settings">
-                        <summary>Cấu hình server</summary>
-                        <div class="stack">
-                            <label class="profile-field" for="ai-server-url"><span>Server AI</span>
-                                <input id="ai-server-url" type="url" value="https://k12-ai-server-production.up.railway.app" autocomplete="off">
-                            </label>
-                            <label class="profile-field" for="ai-server-token"><span>Token quản trị (không bắt buộc)</span>
-                                <input id="ai-server-token" type="password" autocomplete="off" placeholder="K12_SERVER_TOKEN">
-                            </label>
-                            <p class="comment-preview-line">Người dùng thường chỉ cần đăng nhập email. Token quản trị bỏ qua giới hạn lượt giải.</p>
-                        </div>
-                    </details>
                     <button id="ai-health" class="secondary-button" type="button">Kiểm tra server</button>
                     <button id="ai-read" class="secondary-button" type="button">Chỉ đọc đề trên trang hiện tại</button>
                     <button id="ai-export-exercise" class="secondary-button" type="button">Xuất dữ liệu đề đã đọc</button>

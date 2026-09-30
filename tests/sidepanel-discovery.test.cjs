@@ -31,7 +31,9 @@ class Element {
     }
 }
 
-function createPanel(activeUrl) {
+const SESSION = { server: 'https://k12-ai-server-production.up.railway.app', email: 'a@b.vn', token: 't' };
+
+function createPanel(activeUrl, session = SESSION) {
     const html = readFileSync(join(__dirname, '../chrome-extension/sidepanel.html'), 'utf8');
     const elements = new Map(Array.from(html.matchAll(/\bid="([^"]+)"/g), match => [match[1], new Element(match[1])]));
     let onReady;
@@ -66,7 +68,7 @@ function createPanel(activeUrl) {
             onUpdated: { addListener() {} }
         },
         storage: {
-            local: { async get(defaults) { return { ...defaults }; }, async set() {} },
+            local: { async get(defaults) { return { ...defaults, k12AuthSession: session }; }, async set() {} },
             onChanged: { addListener() {} }
         }
     };
@@ -103,4 +105,14 @@ test('workflow preview reads content metadata without sending a K12 write', asyn
     assert.deepEqual(panel.messages.map(message => message.action), ['discoverAllLessons', 'getCandidateExercises']);
     assert.deepEqual(panel.tabMessages.map(message => message.action), []);
     assert.match(panel.elements.get('bulk-status').textContent, /Không gửi yêu cầu/);
+});
+
+test('signed-out users only see the login gate and nothing is scanned', async () => {
+    const panel = createPanel('https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/teacherList?site=2003644', null);
+    await panel.ready();
+    assert.equal(panel.elements.get('auth-gate').hidden, false);
+    assert.equal(panel.elements.get('app-main').hidden, true);
+    assert.equal(panel.elements.get('app-tabs').hidden, true);
+    assert.deepEqual(panel.messages, []);
+    assert.deepEqual(panel.tabMessages, []);
 });

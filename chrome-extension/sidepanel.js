@@ -19,7 +19,8 @@ const state = {
     aiBusy: false,
     authSession: null,
     resendTimer: null,
-    skipCompleted: true
+    skipCompleted: true,
+    initialized: false
 };
 const isDone = candidate => /^100\s*%?$/.test(String(candidate.progress || '').trim());
 // Selected lessons that bulk actions should process; 100% lessons drop out when skipping is on.
@@ -61,7 +62,8 @@ Object.assign(elements, Object.fromEntries([
     'ai-tab', 'ai-view', 'ai-server-url', 'ai-server-token', 'ai-health', 'ai-current',
     'ai-status', 'ai-answers', 'api-record-toggle', 'api-export', 'discover-all', 'ai-selected', 'ai-submit-toggle', 'ai-read', 'ai-export-exercise', 'ai-export-result',
     'ai-login', 'ai-email', 'ai-send-code', 'ai-code-step', 'ai-code', 'ai-verify-code',
-    'ai-account', 'ai-account-email', 'ai-quota', 'ai-logout', 'ai-auth-status', 'skip-completed'
+    'ai-account', 'ai-account-email', 'ai-quota', 'ai-logout', 'ai-auth-status', 'skip-completed',
+    'auth-gate', 'app-tabs', 'app-main'
 ].map(id => [id.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), document.getElementById(id)])));
 
 async function init() {
@@ -177,6 +179,7 @@ async function init() {
         }
     });
 
+    state.initialized = true;
     await refreshLessons();
 }
 
@@ -215,7 +218,7 @@ async function sendToTab(tabId, message) {
 }
 
 async function refreshLessons() {
-    if (state.processing) return;
+    if (state.processing || !currentSession()) return;
     state.processing = true;
     renderLessons();
     elements.refreshButton.disabled = true;
@@ -567,8 +570,8 @@ async function saveAiSettings() {
         await chrome.storage.local.set({ k12AiServerUrl: url, k12AiServerToken: elements.aiServerToken.value.trim() });
         // A session belongs to the server that issued it.
         if (state.authSession && state.authSession.server !== url) await setAuthSession(null);
-        elements.aiStatus.textContent = 'Đã lưu cấu hình server.';
-    } catch (error) { elements.aiStatus.textContent = error.message; }
+        elements.aiAuthStatus.textContent = 'Đã lưu cấu hình server.';
+    } catch (error) { elements.aiAuthStatus.textContent = error.message; }
 }
 
 async function setAuthSession(session) {
@@ -587,6 +590,13 @@ function currentSession() {
 
 function renderAccount(account) {
     const session = currentSession();
+    // Everything except the login gate stays hidden until the user signs in.
+    const wasLocked = elements.appMain.hidden;
+    elements.authGate.hidden = Boolean(session);
+    elements.appTabs.hidden = !session;
+    elements.appMain.hidden = !session;
+    elements.refreshButton.hidden = !session;
+    if (session && wasLocked && state.initialized) refreshLessons();
     elements.aiLogin.hidden = Boolean(session);
     elements.aiAccount.hidden = !session;
     elements.aiAccountEmail.textContent = session?.email || '';

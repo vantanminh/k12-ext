@@ -108,7 +108,23 @@
         const groups = Array.from(form?.querySelectorAll('li[id^="question"]') || []);
         return groups.length > 0 && groups.every(group => group.querySelectorAll('input[type=radio]').length >= 2);
     }
+    const startControl = () => Array.from(document.querySelectorAll('a[href], [onclick]')).find(el =>
+        /VHV\.App\.modules\[\d+\]\.doExercise\(\)/.test((el.getAttribute('href') || '') + (el.getAttribute('onclick') || '')));
+    const formOpen = () => Boolean(document.querySelector('.doExercise-pdf form') || trueFalseForm());
+    // K12 renders the exercise module via AJAX after page load, so wait until
+    // the form, the "Làm bài" control or a known status screen appears.
+    async function waitForModule() {
+        const deadline = Date.now() + 15000;
+        while (Date.now() < deadline) {
+            if (formOpen() || document.querySelector('fieldset, [data-question-id]') || startControl()) return;
+            const text = elementText(document.querySelector('#module2'));
+            if (/Bạn cần hoàn thành các nội dung theo thứ tự/i.test(text)) return;
+            if (Array.from(document.querySelectorAll('a, button, [onclick]')).some(element => element.textContent.trim() === 'Làm lại')) return;
+            await pause(250);
+        }
+    }
     async function prepareExercise() {
+        await waitForModule();
         const discussion = document.querySelector('a[href*="objectType="]')?.getAttribute('href');
         const hasExerciseForm = Boolean(document.querySelector('.doExercise-pdf form, fieldset, [data-question-id]') || trueFalseForm());
         if (!hasExerciseForm && /Bạn cần hoàn thành các nội dung theo thứ tự/i.test(elementText(document.querySelector('#module2')))) {
@@ -117,8 +133,7 @@
         if (!hasExerciseForm && Array.from(document.querySelectorAll('a, button, [onclick]')).some(element => element.textContent.trim() === 'Làm lại')) {
             return { ok: false, alreadyCompleted: true, message: 'K12 đang hiển thị kết quả bài đã nộp. Không tự tạo lượt làm lại; mở bài chưa làm để thử AI.' };
         }
-        const start = Array.from(document.querySelectorAll('a[href], [onclick]')).find(el =>
-            /VHV\.App\.modules\[\d+\]\.doExercise\(\)/.test((el.getAttribute('href') || '') + (el.getAttribute('onclick') || '')));
+        const start = startControl();
         if (!hasExerciseForm && !start && discussion && new URL(discussion, location.href).searchParams.get('objectType') !== 'Courseware.Exercise') {
             return { ok: false, notExercise: true, coursewareType: new URL(discussion, location.href).searchParams.get('objectType'), message: 'Nội dung này là tài liệu hoặc video.' };
         }
@@ -126,9 +141,13 @@
             if (start) {
                 const moduleIndex = Number(((start.getAttribute('href') || '') + (start.getAttribute('onclick') || '')).match(/VHV\.App\.modules\[(\d+)\]\.doExercise\(\)/)[1]);
                 window.postMessage({ type: 'k12-open-exercise', moduleIndex }, location.origin);
-                const deadline = Date.now() + 20000;
-                while (Date.now() < deadline && !document.querySelector('.doExercise-pdf form') && !trueFalseForm()) await pause(250);
-                if (!document.querySelector('.doExercise-pdf form') && !trueFalseForm()) throw new Error('K12 chưa mở biểu mẫu làm bài. Hãy mở bài và thử lại.');
+                let deadline = Date.now() + 6000;
+                while (Date.now() < deadline && !formOpen()) await pause(250);
+                // Fall back to pressing "Làm bài" itself if the module call did not render the form.
+                if (!formOpen() && startControl()) startControl().click();
+                deadline = Date.now() + 20000;
+                while (Date.now() < deadline && !formOpen()) await pause(250);
+                if (!formOpen()) throw new Error('K12 chưa mở biểu mẫu làm bài. Hãy mở bài và thử lại.');
             }
         }
         if (trueFalseForm()) {

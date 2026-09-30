@@ -28,19 +28,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Store::memory()
         }
     };
-    let mailer = match (env("RESEND_API_KEY"), env("K12_EMAIL_FROM")) {
-        (Some(api_key), Some(from)) => Mailer::Resend {
-            api_key,
-            from,
-            url: "https://api.resend.com/emails".into(),
-        },
+    let mailer = match (
+        env("CLOUDFLARE_ACCOUNT_ID"),
+        env("CLOUDFLARE_EMAIL_API_TOKEN"),
+        env("K12_EMAIL_FROM"),
+    ) {
+        (Some(account_id), Some(api_token), Some(from)) => {
+            Mailer::cloudflare(&account_id, api_token, from)
+        }
         // Printing codes is only allowed for a server bound to this machine.
         _ if env("K12_DEV_LOG_OTP").as_deref() == Some("1") && bind_address.is_loopback() => {
             println!("K12_DEV_LOG_OTP=1: login codes are printed here instead of emailed.");
             Mailer::Log
         }
         _ => {
-            println!("RESEND_API_KEY/K12_EMAIL_FROM not set: email login is disabled.");
+            println!(
+                "CLOUDFLARE_ACCOUNT_ID/CLOUDFLARE_EMAIL_API_TOKEN/K12_EMAIL_FROM not set: email login is disabled."
+            );
             Mailer::Disabled
         }
     };

@@ -902,9 +902,11 @@ mod tests {
             .route(
                 "/emails",
                 post(move |headers: HeaderMap, Json(body): Json<Value>| async move {
-                    assert_eq!(headers["authorization"], "Bearer re-key");
+                    assert_eq!(headers["authorization"], "Bearer cf-token");
+                    let to = body["to"].clone();
                     outbox.lock().unwrap().push(body);
-                    Json(json!({"id": "email-1"}))
+                    Json(json!({"success": true, "errors": [], "messages": [],
+                        "result": {"delivered": [to], "permanent_bounces": [], "queued": []}}))
                 }),
             )
             .route("/v1/responses", post(|| async {
@@ -913,9 +915,9 @@ mod tests {
         let handle = tokio::spawn(async move {
             axum::serve(listener, mock).await.unwrap();
         });
-        let mailer = Mailer::Resend {
-            api_key: "re-key".into(),
-            from: "K12 AI <login@example.vn>".into(),
+        let mailer = Mailer::Cloudflare {
+            api_token: "cf-token".into(),
+            from: "login@example.vn".into(),
             url: format!("{base}/emails"),
         };
         let app = router(
@@ -965,7 +967,7 @@ mod tests {
         );
         let message = sent.lock().unwrap().pop().unwrap();
         assert!(sent.lock().unwrap().is_empty());
-        assert_eq!(message["to"][0], email);
+        assert_eq!(message["to"], email);
         // Subject ends with the code: "Mã đăng nhập K12 AI: 123456".
         let subject = message["subject"].as_str().unwrap();
         let code = subject[subject.len() - 6..].to_string();

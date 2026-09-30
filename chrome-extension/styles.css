@@ -4,6 +4,9 @@
     right: 18px !important;
     z-index: 2147483647 !important;
     width: min(320px, calc(100vw - 24px)) !important;
+    height: auto !important;
+    min-height: 0 !important;
+    bottom: auto !important;
     padding: 14px !important;
     border: 1px solid rgba(15, 118, 110, 0.18) !important;
     border-radius: 16px !important;
@@ -17,6 +20,8 @@
     max-height: none !important;
     overflow: visible !important;
     gap: 10px !important;
+    grid-auto-rows: auto !important;
+    align-content: start !important;
     box-sizing: border-box !important;
     font-family: Arial, sans-serif !important;
     backdrop-filter: blur(8px) !important;

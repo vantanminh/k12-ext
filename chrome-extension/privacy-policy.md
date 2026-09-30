@@ -1,72 +1,47 @@
 # Privacy Policy for K12 Video Runner
 
-Last updated: 2026-09-21
+Last updated: 2026-09-30
 
-## Overview
+## Purpose and data flow
 
-K12 Video Runner adds a Chrome side panel where users can choose lessons listed on `hcm.k12online.vn` and mark the selected lessons complete. For lessons selected from a list, the extension sends the selected lesson ID to the site's `Lesson/learn` API to get its canonical lesson link, then reads the lesson page before requesting completion. A `Hoàn thành bài` button remains available on individual lesson pages. Non-video courseware uses the `Courseware/markComplete` API; video lessons keep using the site's video completion API. Users can optionally enable a comment after a lesson is completed.
+K12 Video Runner helps users manage K12 lessons from a Chrome side panel: discover lessons and subjects, request AI exercise answers, submit answers, mark supported material/video viewed, and optionally post comments using per-subject rules. Actions use the user's browser session on hcm.k12online.vn.
 
-## What data the extension collects
+There is no developer-operated backend, analytics, advertising or tracking service. Users operate or choose the Rust AI server, either on localhost or an HTTPS host such as their Railway deployment. The OpenAI API key is configured on that server, never in the extension.
 
-The extension stores the user's preferences and, if entered, their name, class, and student ID in Chrome's local extension storage. The extension developer does not receive these values. When automatic comments are enabled, the extension sends the resulting comment to `hcm.k12online.vn` after a successful completion action.
+## Data read and stored locally
 
-The extension does not maintain its own backend, database, analytics service, advertising service, or tracking system.
+The extension reads supported K12 page content, lesson/courseware IDs, subjects, progress, exercise questions, answer choices, tables, public PDF/image URLs and website form values needed for the requested action. K12 authentication values stay in the browser.
 
-## What the extension accesses locally
+Chrome local extension storage holds preferences, subject rules, optional Name/Class/Student ID, server address and connection token, the latest AI result and up to 10 cached exercise results. It also holds up to 100 comment-history records to avoid duplicate posts. Users can edit or clear profile fields in the side panel. Lesson selections are not saved after the side-panel session.
 
-To perform its single purpose, the extension may locally read information already present on supported pages of `hcm.k12online.vn`, such as:
+## Data sent to K12
 
-- page URL parameters
-- page source values embedded in scripts
-- lesson titles, progress values, and identifiers shown in the current lesson list
-- courseware and lesson identifiers, courseware type, and other values required by the website to process the completion action
-- the lessons the user selects for completion
+When users select lessons and run an action, the extension opens lesson pages as necessary and sends the appropriate K12 requests using the current browser session. These include opening exercise attempts, submitting validated answers, marking supported materials/video viewed and checking progress. If comments are enabled, it sends the user-entered Name, Class, Student ID and answer summary or viewed message to K12's discussion service. Comments may be visible to people with access to that discussion.
 
-This information is processed locally in the user's browser to enable the requested action. The optional comment profile is stored locally until the user changes or clears it.
+## Data sent for AI
 
-## What the extension sends
+When AI solving is requested, normalized question text, question IDs, choices and optional public K12 PDF/image URLs are sent to the configured Rust server with its separate connection token. That server forwards exercise content to OpenAI. OpenAI retrieves supplied public PDFs; Rust downloads public images without K12 cookies or authentication and forwards their bytes to OpenAI.
 
-When the user explicitly chooses lessons and clicks the completion button, the extension sends a request only to `hcm.k12online.vn` in order to complete those lessons on that website. It may retrieve the selected lesson page from the same site to read the parameters needed for that request. If automatic comments are enabled, it also sends the user-provided name, class, and student ID as a comment to the same website.
+K12 cookies, securityToken, account details and the comment profile are excluded from this AI payload. The server sends store: false in Responses API requests. OpenAI processes requests according to the API account's settings. If users select a hosted backend, its operator may receive exercise content and connection metadata; choose a server you control or trust.
 
-The extension does not send user data to the developer or to unrelated third parties.
+## Optional API diagnostic log
 
-## Permissions used
+Only when enabled, the extension observes K12 LMS fetch/XHR requests and responses, including portal POST requests carrying an LMS service. It redacts token/cookie/account fields and stores a bounded log locally: at most 80 entries and 1.5 MB, dropping older entries. HTML responses retain summary metadata rather than full HTML. Logs are not sent to the AI server or OpenAI. Users may export a local JSON file; turning recording off stops new captures.
 
-The extension uses access limited to:
+## Permissions
 
-- `https://hcm.k12online.vn/*`
+Required host access covers https://hcm.k12online.vn/* and localhost HTTP addresses for the AI server. The optional permission declaration https://*/* allows the extension to request access to the particular HTTPS backend origin entered by the user; it does not request blanket HTTPS access at installation.
 
-The extension also uses Chrome's `sidePanel` permission to display its sidebar and `storage` permission to remember preferences and optional comment profile fields locally. Access to the site is used only so it can:
+sidePanel displays the UI and storage saves local settings/results/history. The extension does not require the cookies permission. Its packaged JavaScript and CSS contain all executable extension code; it does not download or execute remote JavaScript or Wasm or evaluate remote code.
 
-- read the current lesson list and detect supported courseware lesson pages
-- display the action button on those pages
-- read the values needed to perform the requested action
-- send the completion request back to the same website
+## Retention, sharing and security
 
-## Remote code
+The developer does not receive, store or sell user data. Local settings and records remain until replaced, cleared through available controls, or the extension is uninstalled. Exported files remain wherever users save them. User-enabled comments are stored by K12; OpenAI and a user-chosen hosted backend have their own retention settings.
 
-K12 Video Runner does not use remote code.
+Local HTTP backend addresses are restricted to loopback. Remote backend addresses require HTTPS and explicit access to the selected origin. Solving requests require a separate connection token. Secrets should not be included in exported diagnostic files or shared packages.
 
-All JavaScript and CSS executed by the extension are packaged with the extension itself. The extension does not load external JavaScript, does not run external Wasm, and does not use `eval()` to execute remote code.
+## Changes and contact
 
-## Data retention
-
-The extension developer does not store user data. Preferences and optional comment profile fields remain in the browser's local extension storage; lesson selections and completion request data are not saved by the extension.
-
-## Data sharing and sale
-
-The extension developer does not sell user data.
-
-The extension developer does not transfer user data to third parties. When automatic comments are enabled, the extension sends the comment details to `hcm.k12online.vn` as part of the user-requested action.
-
-## Security
-
-The extension is designed to operate only on `hcm.k12online.vn` and to use the user's current browser session on that same website.
-
-## Changes to this policy
-
-This privacy policy may be updated if the extension's behavior changes. Any future update should be published in this file before or at the same time as the related extension release.
-
-## Contact
+This policy should be updated alongside changes to extension behavior.
 
 Repository: https://github.com/vantanminh/k12-ext

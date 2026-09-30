@@ -1,187 +1,30 @@
-# Chrome Web Store Listing
+# Chrome Web Store Listing — 1.6.0
 
-File này tổng hợp nội dung để copy nhanh lên Chrome Web Store cho extension `K12 Video Runner`.
-
-## 1. Trang thông tin trên Cửa hàng
-
-### Tên trong gói
+## Tên và mô tả ngắn
 
 K12 Video Runner
 
-### Thông tin tóm tắt trong gói
+Quản lý bài học, đáp án AI và tiến độ K12 từ sidebar Chrome.
 
-Mở sidebar để chọn và đánh dấu hoàn thành nhiều bài học K12 cùng lúc.
+## Mô tả
 
-### Mô tả
+K12 Video Runner mở sidebar ngay trên hcm.k12online.vn để quản lý bài học từ trang Bài giảng học tự do. Quét toàn bộ các trang, xem tên bài, môn học và tiến độ, lọc môn rồi chọn những bài cần xử lý.
 
-K12 Video Runner là tiện ích mở rộng dành cho người dùng đang làm việc trên hệ thống hcm.k12online.vn.
+Cấu hình riêng từng môn: bỏ qua bài tập, nộp đáp án, bình luận đáp án hoặc cả hai. Tài liệu và video có lựa chọn đánh dấu đã đọc/xem và bình luận riêng. Bình luận theo thứ tự Tên - Lớp - Mã số - đáp án; hồ sơ chỉ lưu trong Chrome và gửi tới K12 khi người dùng bật chức năng đó.
 
-K12 Video Runner mở một sidebar ngay trong Chrome để người dùng chọn các bài học đang hiển thị trên trang K12. Sidebar quét các dòng bài học trong module danh sách như `#listingModule3` (gồm tên bài và tiến độ), cho phép tìm kiếm, chọn từng bài hoặc chọn tất cả, rồi gửi yêu cầu hoàn thành theo thứ tự.
+AI hỗ trợ form bài tập PDF chọn một đáp án và form văn bản Đúng/Sai có bảng, hình minh họa. Nội dung đề được gửi tới backend Rust do người dùng chạy trên localhost hoặc host HTTPS đã chọn, rồi tới OpenAI. OpenAI API key nằm trên server; cookie/token đăng nhập K12 được giữ trong trình duyệt.
 
-Với bài lấy từ danh sách, khi người dùng bấm hoàn thành, tiện ích gửi lessonId tới API `Lesson/learn` để lấy liên kết chuẩn của bài, rồi đọc các thông tin cần thiết từ HTML, gồm coursewareId, lessonId, courseSiteId, coursewareType, site, securityToken và các tham số options liên quan. Courseware thường dùng API `Courseware/markComplete`; video tiếp tục dùng API hoàn tất video. Các yêu cầu dùng phiên đăng nhập hiện tại và chỉ được gửi sau khi người dùng chọn bài, bấm nút hoàn thành.
+Tab AI cho phép đọc đề, xuất JSON, xem đáp án và lời giải trước khi nộp. Quy trình theo môn mở từng nội dung trong tab nền, thực hiện quy tắc đã cấu hình và đóng các tab do tiện ích tạo. Tiện ích kiểm tra tiến độ K12 trước khi báo hoàn thành; đáp án AI chưa được nộp có trạng thái riêng.
 
-Trên từng trang bài học, người dùng vẫn có thể dùng nút nổi `Hoàn thành bài` một lần. Tab `Quản lý` trong sidebar cho phép bật/tắt nút nổi, bật bình luận tự động theo Tên, Lớp, Mã số và mở trang quản lý extension của Chrome.
+Tùy chọn Ghi API K12 giúp chẩn đoán tại máy. Log che token, cookie và trường tài khoản, không gửi cho AI; HTML chỉ giữ metadata. Người dùng có thể xuất JSON đề/đáp án/log để kiểm tra.
 
-Điểm hữu ích của tiện ích:
+Nút hoàn thành nhanh dành cho trang tài liệu/video có thể tắt trong Quản lý. Courseware.Exam và dạng bài chưa hỗ trợ được báo rõ. Tiện ích không có quảng cáo, analytics hoặc tracking của nhà phát triển.
 
-- Chọn và hoàn thành nhiều bài học từ sidebar Chrome.
-- Hiển thị nút thao tác nhanh ngay trên trang bài học.
-- Tùy chọn gửi bình luận `Tên - Lớp - Mã số - đã xem ạ` sau khi hoàn thành bài.
-- Tận dụng phiên đăng nhập hiện tại của người dùng, không yêu cầu nhập lại cookie hoặc token.
-- Phản hồi rõ ràng ngay trên giao diện sau khi gửi request.
-- Nếu hệ thống xác nhận request thành công thì tiện ích thông báo bài học đã hoàn tất.
-- Nếu request thất bại hoặc dữ liệu trên trang không đủ, tiện ích hiển thị lỗi tương ứng để người dùng dễ kiểm tra.
+## Thông tin cửa hàng
 
-Tiện ích chỉ đọc trang và gửi yêu cầu tới `hcm.k12online.vn`. Sidebar chỉ lấy các bài học liên kết trên trang hiện tại; tiện ích không tự chọn hoặc tự hoàn thành bài. Bình luận tự động chỉ được gửi khi người dùng bật tùy chọn và hoàn thành thao tác.
+- Danh mục: Productivity / Năng suất.
+- Ngôn ngữ: Vietnamese / Tiếng Việt.
+- Nội dung người lớn: Không.
+- Tài liệu quyền riêng tư: privacy-policy.md và chrome-store-privacy-form.md trong thư mục này.
 
-K12 Video Runner phù hợp cho người dùng muốn quản lý và hoàn thành nhanh các bài học K12 từ một sidebar duy nhất.
-
-### Loại
-
-Productivity
-
-Nếu giao diện hiển thị danh mục tiếng Việt, có thể chọn mục tương đương với `Năng suất`.
-
-### Ngôn ngữ
-
-Tiếng Việt
-
-Nếu Chrome Web Store yêu cầu chọn mã ngôn ngữ hoặc tên tiếng Anh, chọn `Vietnamese`.
-
-## 2. Nội dung đồ họa
-
-### Biểu tượng cửa hàng
-
-Yêu cầu upload file ảnh thật, kích thước `128 x 128`.
-
-Gợi ý tên file:
-
-`icon-128.png`
-
-Gợi ý nội dung icon:
-
-- Nền xanh đậm hoặc xanh ngọc.
-- Biểu tượng nút Play kết hợp dấu check.
-- Phong cách phẳng, dễ nhìn ở kích thước nhỏ.
-
-### Video quảng cáo hiển thị ở mọi ngôn ngữ
-
-URL YouTube:
-
-Để trống nếu chưa có video demo.
-
-Nếu sau này có video, nên dùng video ngắn từ 20 đến 45 giây, quay lại các bước:
-
-1. Mở trang video trên K12.
-2. Mở sidebar K12 Video Runner từ icon extension.
-3. Chọn một hoặc nhiều bài học.
-4. Bấm nút hoàn thành và xem kết quả từng bài.
-
-### Ảnh chụp màn hình
-
-Cần ít nhất 1 ảnh, tối đa 5 ảnh.
-
-Yêu cầu kỹ thuật:
-
-- `1280 x 800` hoặc `640 x 400`
-- `JPEG` hoặc `PNG 24-bit`
-- Không dùng alpha
-
-Gợi ý 5 ảnh để upload:
-
-1. `screenshot-1-home.png`
-   Sidebar hiển thị danh sách bài học có thể chọn.
-
-2. `screenshot-2-running.png`
-   Trạng thái đang xử lý nhiều bài đã chọn.
-
-3. `screenshot-3-success.png`
-   Trạng thái thành công với thông báo hoàn tất.
-
-4. `screenshot-4-error.png`
-   Ví dụ hiển thị lỗi khi thiếu dữ liệu hoặc phiên đăng nhập hết hạn.
-
-5. `screenshot-5-mobile-or-compact.png`
-   Giao diện hiển thị gọn trong layout hẹp hơn.
-
-### Ô quảng cáo nhỏ
-
-Yêu cầu ảnh thật, kích thước `440 x 280`.
-
-Gợi ý tên file:
-
-`promo-small-440x280.png`
-
-Gợi ý nội dung chữ trên ảnh:
-
-`K12 Video Runner`
-
-`Chọn và hoàn thành nhiều bài học từ sidebar Chrome`
-
-### Ô quảng cáo marquee
-
-Yêu cầu ảnh thật, kích thước `1400 x 560`.
-
-Gợi ý tên file:
-
-`promo-marquee-1400x560.png`
-
-Gợi ý nội dung chữ trên ảnh:
-
-`K12 Video Runner`
-
-`Quản lý và hoàn thành bài học ngay trên hcm.k12online.vn`
-
-## 3. Các trường bổ sung
-
-### URL chính thức
-
-Không có thì để trống.
-
-### URL trang chủ
-
-Không có thì để trống.
-
-Nếu cần điền sau này, nên dùng website chính thức của dự án hoặc trang giới thiệu riêng cho extension.
-
-### URL hỗ trợ
-
-Không có thì để trống.
-
-Nếu cần điền sau này, nên dùng trang hướng dẫn sử dụng, trang liên hệ hoặc form hỗ trợ.
-
-## 4. Nội dung người lớn
-
-Chọn: `Không`
-
-## 5. Bản copy ngắn để dán nhanh
-
-### Tên trong gói
-
-K12 Video Runner
-
-### Thông tin tóm tắt trong gói
-
-Mở sidebar để chọn và đánh dấu hoàn thành nhiều bài học K12 cùng lúc.
-
-### Mô tả ngắn gọn hơn nếu cần
-
-K12 Video Runner mở sidebar trên Chrome để chọn các bài học đang hiển thị trên hcm.k12online.vn, rồi đánh dấu hoàn thành các bài được chọn bằng phiên đăng nhập hiện tại. Người dùng có thể bật bình luận tự động theo Tên, Lớp, Mã số. Sidebar hiển thị tiến độ và kết quả từng bài; nút nổi trên từng trang có thể bật hoặc tắt trong mục Quản lý.
-
-### Danh mục đề xuất
-
-Productivity
-
-### Ngôn ngữ đề xuất
-
-Vietnamese
-
-### Nội dung người lớn
-
-Không
-
-## 6. Ghi chú trước khi đăng
-
-- Cần chuẩn bị ít nhất 1 ảnh screenshot thật để upload.
-- Nếu chưa có website chính thức hoặc trang hỗ trợ, có thể để trống các URL tương ứng.
-- Nên kiểm tra lại nội dung mô tả để phù hợp chính sách của Chrome Web Store trước khi gửi duyệt.
+Chưa gửi duyệt Store. Cần chuẩn bị icon và screenshot thật, đối chiếu kích thước và biểu mẫu Store hiện hành trước khi phát hành. URL hỗ trợ/chính sách phải public nếu sử dụng repository làm nguồn.

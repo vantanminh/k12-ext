@@ -1,2 +1,11 @@
 main-respond.html
 html-k12
+server/target/
+.env
+.env.local
+server/.env
+server/.env.local
+*.har
+api-captures/
+node_modules/
+k12-ai-server-windows.zip

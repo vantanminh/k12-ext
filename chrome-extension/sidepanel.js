@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', init);
 const QUICK_BUTTON_KEY = 'k12QuickButtonEnabled';
 const AUTO_COMMENT_ENABLED_KEY = 'k12AutoCommentEnabled';
 const AUTO_COMMENT_PROFILE_KEY = 'k12AutoCommentProfile';
+const SUBJECT_RULES_KEY = 'k12SubjectRules';
 const state = {
     tabId: null,
     pageUrl: '',
@@ -12,7 +13,9 @@ const state = {
     processing: false,
     quickButtonEnabled: true,
     autoCommentEnabled: false,
-    commentProfile: { name: '', className: '', studentId: '' }
+    commentProfile: { name: '', className: '', studentId: '' },
+    subjectRules: {},
+    aiBusy: false
 };
 
 const elements = {
@@ -24,6 +27,10 @@ const elements = {
     manageView: document.getElementById('manage-view'),
     scanStatus: document.getElementById('scan-status'),
     search: document.getElementById('lesson-search'),
+    subjectFilter: document.getElementById('subject-filter'),
+    lessonStats: document.getElementById('lesson-stats'),
+    subjectRules: document.getElementById('subject-rules'),
+    workflowSelected: document.getElementById('workflow-selected'),
     selectAll: document.getElementById('select-all'),
     selectedCount: document.getElementById('selected-count'),
     lessonList: document.getElementById('lesson-list'),
@@ -40,15 +47,32 @@ const elements = {
     openExtensionManager: document.getElementById('open-extension-manager'),
     settingsStatus: document.getElementById('settings-status')
 };
+Object.assign(elements, Object.fromEntries([
+    'ai-tab', 'ai-view', 'ai-server-url', 'ai-server-token', 'ai-health', 'ai-current',
+    'ai-status', 'ai-answers', 'api-record-toggle', 'api-export', 'discover-all', 'ai-selected', 'ai-submit-toggle', 'ai-read', 'ai-export-exercise', 'ai-export-result'
+].map(id => [id.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), document.getElementById(id)])));
 
 async function init() {
     elements.extensionVersion.textContent = `v${chrome.runtime.getManifest().version}`;
     elements.refreshButton.addEventListener('click', () => refreshLessons());
     elements.search.addEventListener('input', renderLessons);
+    elements.subjectFilter.addEventListener('change', renderLessons);
     elements.selectAll.addEventListener('change', toggleVisibleLessons);
     elements.completeSelected.addEventListener('click', completeSelectedLessons);
     elements.lessonsTab.addEventListener('click', () => showView('lessons'));
     elements.manageTab.addEventListener('click', () => showView('manage'));
+    elements.aiTab.addEventListener('click', () => showView('ai'));
+    elements.discoverAll.addEventListener('click', discoverAllLessons);
+    elements.aiSelected.addEventListener('click', solveSelectedExercises);
+    elements.workflowSelected.addEventListener('click', runSelectedWorkflow);
+    elements.aiCurrent.addEventListener('click', solveCurrentExercise);
+    elements.aiRead.addEventListener('click', inspectCurrentExercise);
+    elements.aiExportExercise.addEventListener('click', exportReadExercise);
+    elements.aiExportResult.addEventListener('click', exportAiResult);
+    elements.aiHealth.addEventListener('click', checkAiServer);
+    elements.apiRecordToggle.addEventListener('change', () => chrome.storage.local.set({ k12ApiRecording: elements.apiRecordToggle.checked }));
+    elements.apiExport.addEventListener('click', exportApiCapture);
+    [elements.aiServerUrl, elements.aiServerToken].forEach(input => input.addEventListener('change', saveAiSettings));
     elements.quickButtonToggle.addEventListener('change', updateQuickButtonSetting);
     elements.autoCommentToggle.addEventListener('change', updateAutoCommentSetting);
     [elements.commentName, elements.commentClass, elements.commentStudentId].forEach((input) => {
@@ -60,13 +84,29 @@ async function init() {
     const settings = await chrome.storage.local.get({
         [QUICK_BUTTON_KEY]: true,
         [AUTO_COMMENT_ENABLED_KEY]: false,
-        [AUTO_COMMENT_PROFILE_KEY]: { name: '', className: '', studentId: '' }
+        [AUTO_COMMENT_PROFILE_KEY]: { name: '', className: '', studentId: '' },
+        [SUBJECT_RULES_KEY]: {},
+        k12AiServerUrl: 'http://127.0.0.1:3210', k12AiServerToken: '', k12ApiRecording: false
     });
+    elements.aiServerUrl.value = settings.k12AiServerUrl;
+    elements.aiServerToken.value = settings.k12AiServerToken;
+    elements.apiRecordToggle.checked = settings.k12ApiRecording;
+    const { k12LastAiResult } = await chrome.storage.local.get('k12LastAiResult');
+    if (k12LastAiResult) {
+        try {
+            const input = K12AI.validateExercise(k12LastAiResult.exercise);
+            const result = K12AI.validateAnswers(input, k12LastAiResult.result);
+            renderAiAnswers(input, result);
+            elements.aiStatus.textContent = 'Đang hiển thị đáp án AI gần nhất. Xem tên đề trước khi sử dụng.';
+        } catch (_) {}
+    }
     state.quickButtonEnabled = settings[QUICK_BUTTON_KEY] !== false;
     elements.quickButtonToggle.checked = state.quickButtonEnabled;
     state.autoCommentEnabled = settings[AUTO_COMMENT_ENABLED_KEY] === true;
     state.commentProfile = normalizeCommentProfile(settings[AUTO_COMMENT_PROFILE_KEY]);
+    state.subjectRules = settings[SUBJECT_RULES_KEY] || {};
     populateCommentProfile();
+    renderSubjectControls();
     elements.autoCommentToggle.checked = state.autoCommentEnabled;
 
     if (state.autoCommentEnabled && !hasCompleteCommentProfile(state.commentProfile)) {
@@ -101,21 +141,26 @@ async function init() {
             state.commentProfile = normalizeCommentProfile(changes[AUTO_COMMENT_PROFILE_KEY].newValue);
             populateCommentProfile();
         }
+        if (changes[SUBJECT_RULES_KEY]) {
+            state.subjectRules = changes[SUBJECT_RULES_KEY].newValue || {};
+            renderSubjectControls();
+        }
     });
 
     await refreshLessons();
 }
 
 function showView(name) {
-    const lessonsActive = name === 'lessons';
-    elements.lessonsTab.classList.toggle('active', lessonsActive);
-    elements.manageTab.classList.toggle('active', !lessonsActive);
-    elements.lessonsTab.setAttribute('aria-selected', String(lessonsActive));
-    elements.manageTab.setAttribute('aria-selected', String(!lessonsActive));
-    elements.lessonsView.classList.toggle('active', lessonsActive);
-    elements.manageView.classList.toggle('active', !lessonsActive);
-    elements.lessonsView.hidden = !lessonsActive;
-    elements.manageView.hidden = lessonsActive;
+    for (const [key, tab, view] of [
+        ['lessons', elements.lessonsTab, elements.lessonsView],
+        ['manage', elements.manageTab, elements.manageView],
+        ['ai', elements.aiTab, elements.aiView]
+    ]) {
+        tab.classList.toggle('active', key === name);
+        tab.setAttribute('aria-selected', String(key === name));
+        view.classList.toggle('active', key === name);
+        view.hidden = key !== name;
+    }
 }
 
 async function getActiveTab() {
@@ -181,6 +226,7 @@ async function refreshLessons() {
 
     const previousSelection = new Set(state.selected);
     state.candidates = Array.isArray(response.lessons) ? response.lessons : [];
+    renderSubjectControls();
     state.selected = new Set(state.candidates
         .filter((candidate) => previousSelection.has(candidate.key))
         .map((candidate) => candidate.key));
@@ -193,15 +239,69 @@ async function refreshLessons() {
 
 function getVisibleCandidates() {
     const query = elements.search.value.trim().toLocaleLowerCase('vi');
-    if (!query) {
-        return state.candidates;
-    }
-
+    const subject = elements.subjectFilter.value;
     return state.candidates.filter((candidate) =>
-        `${candidate.title} ${candidate.lessonId} ${candidate.coursewareId || ''}`
-            .toLocaleLowerCase('vi')
-            .includes(query)
+        (!subject || candidate.subject === subject)
+        && (!query || `${candidate.title} ${candidate.subject || ''} ${candidate.lessonId} ${candidate.coursewareId || ''}`
+            .toLocaleLowerCase('vi').includes(query))
     );
+}
+
+function subjectRule(subject) {
+    return K12AI.subjectRule(state.subjectRules[subject], state.autoCommentEnabled);
+}
+
+function renderSubjectControls() {
+    const subjects = [...new Set([...state.candidates.map(c => c.subject).filter(Boolean), ...Object.keys(state.subjectRules)])].sort((a, b) => a.localeCompare(b, 'vi'));
+    const chosen = elements.subjectFilter.value;
+    elements.subjectFilter.replaceChildren(new Option('Tất cả môn học', ''));
+    for (const subject of subjects) elements.subjectFilter.add(new Option(subject, subject));
+    elements.subjectFilter.value = subjects.includes(chosen) ? chosen : '';
+    elements.subjectRules.replaceChildren();
+    if (!subjects.length) {
+        const empty = document.createElement('p');
+        empty.className = 'comment-preview-line';
+        empty.textContent = 'Quét trang Bài giảng học tự do để hiện các môn học.';
+        elements.subjectRules.append(empty);
+        return;
+    }
+    for (const subject of subjects) {
+        const rule = subjectRule(subject);
+        const card = document.createElement('div');
+        card.className = 'subject-rule';
+        const name = document.createElement('strong');
+        name.textContent = subject;
+        const options = document.createElement('div');
+        options.className = 'subject-rule-options';
+        const modeLabel = document.createElement('label');
+        modeLabel.textContent = 'Bài tập';
+        const mode = document.createElement('select');
+        mode.setAttribute('aria-label', `Cách xử lý bài tập môn ${subject}`);
+        for (const [value, label] of [['skip', 'Bỏ qua'], ['submit', 'Nộp đáp án'], ['comment', 'Chỉ bình luận đáp án'], ['both', 'Nộp và bình luận đáp án']]) mode.add(new Option(label, value));
+        mode.value = rule.exerciseMode;
+        mode.addEventListener('change', async () => {
+            state.subjectRules = { ...state.subjectRules, [subject]: { ...subjectRule(subject), exerciseMode: mode.value } };
+            await chrome.storage.local.set({ [SUBJECT_RULES_KEY]: state.subjectRules });
+            elements.settingsStatus.textContent = `Đã lưu quy tắc môn ${subject}.`;
+        });
+        modeLabel.append(mode);
+        options.append(modeLabel);
+        for (const [key, label] of [['view', 'Đánh dấu tài liệu/video đã xem'], ['materialComment', 'Bình luận đã xem cho tài liệu/video']]) {
+            const wrapper = document.createElement('label');
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.checked = rule[key];
+            input.addEventListener('change', async () => {
+                state.subjectRules = { ...state.subjectRules, [subject]: { ...subjectRule(subject), [key]: input.checked } };
+                await chrome.storage.local.set({ [SUBJECT_RULES_KEY]: state.subjectRules });
+                elements.settingsStatus.textContent = `Đã lưu quy tắc môn ${subject}.`;
+            });
+            wrapper.append(input, document.createTextNode(label));
+            options.append(wrapper);
+        }
+        card.append(name, options);
+        elements.subjectRules.append(card);
+    }
 }
 
 function candidateKey(candidate) {
@@ -211,8 +311,14 @@ function candidateKey(candidate) {
 
 function renderLessons() {
     const candidates = getVisibleCandidates();
+    const completed = candidates.filter(c => /^100\s*%$/.test(c.progress || '')).length;
+    elements.lessonStats.textContent = `${completed}/${candidates.length} đạt 100%`;
     elements.lessonList.replaceChildren();
     elements.emptyState.hidden = candidates.length > 0;
+    elements.emptyState.querySelector('h3').textContent = state.candidates.length ? 'Không có bài khớp bộ lọc' : 'Chưa tìm thấy bài học';
+    elements.emptyState.querySelector('p').textContent = state.candidates.length
+        ? 'Xóa tên tìm kiếm hoặc chọn Tất cả môn học để hiện các nội dung trên trang.'
+        : 'Mở trang danh sách bài học K12 có các dòng bài, rồi bấm quét lại.';
 
     candidates.forEach((candidate) => {
         const card = document.createElement('article');
@@ -247,8 +353,9 @@ function renderLessons() {
         const meta = document.createElement('span');
         meta.className = 'lesson-meta';
         meta.textContent = result
-            ? result.ok ? 'Đã hoàn thành' : result.message
+            ? result.message
             : [
+                candidate.subject || '',
                 candidate.progress ? `Tiến độ ${candidate.progress}` : '',
                 candidate.coursewareId ? 'Courseware sẵn sàng' : 'Sẽ lấy thông tin khi xử lý'
             ].filter(Boolean).join(' · ');
@@ -275,7 +382,10 @@ function renderLessons() {
 
     const selectedCount = state.selected.size;
     elements.selectedCount.textContent = `${selectedCount} đã chọn`;
-    elements.completeSelected.disabled = state.processing || selectedCount === 0;
+    elements.completeSelected.disabled = state.processing || state.aiBusy || selectedCount === 0;
+    elements.aiSelected.disabled = state.processing || state.aiBusy || selectedCount === 0;
+    elements.workflowSelected.disabled = state.processing || state.aiBusy || selectedCount === 0;
+    elements.discoverAll.disabled = state.processing || state.aiBusy;
     elements.refreshButton.disabled = state.processing;
 
     const visibleKeys = candidates.map(candidateKey);
@@ -342,6 +452,298 @@ async function completeSelectedLessons() {
     elements.bulkStatus.textContent = failed === 0
         ? `Hoàn tất ${succeeded}/${selected.length} bài.`
         : `Thành công ${succeeded}, lỗi ${failed}. Mở từng bài để xem thêm hoặc thử lại.`;
+}
+
+async function discoverAllLessons() {
+    if (state.processing || state.aiBusy || !state.tabId) return;
+    state.processing = true;
+    renderLessons();
+    elements.scanStatus.textContent = 'Đang mở danh sách K12 và quét từng trang...';
+    try {
+        const result = await chrome.runtime.sendMessage({ action: 'discoverAllLessons', tabId: state.tabId });
+        if (Array.isArray(result?.lessons)) {
+            state.candidates = result.lessons;
+            renderSubjectControls();
+            state.selected.clear();
+            state.results.clear();
+        }
+        elements.scanStatus.textContent = result?.message || 'Không quét được bài học.';
+    } catch (error) { elements.scanStatus.textContent = error.message; }
+    finally { state.processing = false; renderLessons(); }
+}
+
+async function saveAiSettings() {
+    try {
+        const url = K12AI.serverUrl(elements.aiServerUrl.value);
+        await chrome.storage.local.set({ k12AiServerUrl: url, k12AiServerToken: elements.aiServerToken.value.trim() });
+        elements.aiStatus.textContent = 'Đã lưu cấu hình server.';
+    } catch (error) { elements.aiStatus.textContent = error.message; }
+}
+
+async function aiRequest(path, body) {
+    const base = K12AI.serverUrl(elements.aiServerUrl.value);
+    const response = await fetch(base + path, {
+        method: body ? 'POST' : 'GET',
+        headers: body ? { 'Content-Type': 'application/json', 'x-k12-token': elements.aiServerToken.value.trim() } : {},
+        ...(body ? { body: JSON.stringify(body) } : {}),
+        signal: AbortSignal.timeout(110000)
+    });
+    const raw = await response.text();
+    let result;
+    try { result = JSON.parse(raw); }
+    catch (_) {
+        throw new Error(response.status === 413
+            ? 'Đề vượt quá giới hạn dữ liệu của server. Hãy cập nhật và khởi động lại server.'
+            : `Server trả HTTP ${response.status} nhưng không phải JSON. Hãy khởi động lại server bằng start.ps1.`);
+    }
+    if (!response.ok) throw new Error(result.message || `Server trả HTTP ${response.status}.`);
+    return result;
+}
+
+async function ensureServerPermission() {
+    const base = K12AI.serverUrl(elements.aiServerUrl.value);
+    if (base.startsWith('http://')) return;
+    const granted = await chrome.permissions.request({ origins: [base + '/*'] });
+    if (!granted) throw new Error('Chrome chưa cho phép tiện ích kết nối tới server HTTPS này.');
+}
+
+async function checkAiServer() {
+    elements.aiHealth.disabled = true;
+    try {
+        await ensureServerPermission();
+        const health = await aiRequest('/health');
+        elements.aiStatus.textContent = health.protocol_version !== 2
+            ? 'Server đang chạy bản cũ. Hãy khởi động lại bằng start.ps1.'
+            : health.ready ? `Server sẵn sàng, model ${health.model}.`
+            : `Server đang chạy. Cần cấu hình ${[!health.api_key_configured ? 'OPENAI_API_KEY' : '', !health.connection_token_configured ? 'K12_SERVER_TOKEN' : ''].filter(Boolean).join(' và ')} trên server.`;
+    } catch (error) { elements.aiStatus.textContent = `Không kết nối được server: ${error.message}`; }
+    finally { elements.aiHealth.disabled = false; }
+}
+
+async function solveExercise(exercise) {
+    const input = K12AI.validateExercise(exercise);
+    const { k12AiResults = [] } = await chrome.storage.local.get('k12AiResults');
+    const cached = k12AiResults.find(entry => JSON.stringify(entry.exercise) === JSON.stringify(input));
+    if (cached && cached.result.answers.every(answer => answer.confidence >= 0.7)) {
+        const result = K12AI.validateAnswers(input, cached.result);
+        renderAiAnswers(input, result);
+        await chrome.storage.local.set({ k12LastAiResult: { ...cached, exercise: input, result, submitted: false, completed: false } });
+        return result;
+    }
+    const health = await aiRequest('/health');
+    if (health.protocol_version !== 2) {
+        throw new Error('Server đang chạy bản cũ. Hãy khởi động lại server bằng start.ps1 rồi thử lại.');
+    }
+    const result = K12AI.validateAnswers(input, await aiRequest('/v1/solve', input));
+    renderAiAnswers(input, result);
+    // AI output is never treated as proof of submission or completion.
+    const entry = { exercise: input, result, time: new Date().toISOString(), submitted: false };
+    await chrome.storage.local.set({ k12LastAiResult: entry,
+        k12AiResults: [entry, ...k12AiResults.filter(old => JSON.stringify(old.exercise) !== JSON.stringify(input))].slice(0, 10) });
+    return result;
+}
+
+function renderAiAnswers(exercise, result) {
+    elements.aiStatus.textContent = `Đã có ${result.answers.length} đáp án AI. Chưa nộp đáp án lên K12.`;
+    elements.aiAnswers.replaceChildren();
+    const heading = document.createElement('h3');
+    heading.textContent = exercise.title;
+    elements.aiAnswers.append(heading);
+    const summary = document.createElement('p');
+    summary.className = 'answer-summary';
+    summary.textContent = K12AI.formatAnswerSummary(exercise, result);
+    elements.aiAnswers.append(summary);
+    for (const answer of result.answers) {
+        const question = exercise.questions.find(q => q.id === answer.question_id);
+        const card = document.createElement('details');
+        card.className = 'settings-card';
+        const title = document.createElement('summary');
+        title.textContent = question.prompt.match(/^Câu \d+[^.]*\./)?.[0] || question.prompt.slice(0, 100);
+        const prompt = document.createElement('p');
+        prompt.textContent = question.prompt;
+        const value = document.createElement('p');
+        value.textContent = answer.choice_ids.length
+            ? answer.choice_ids.map(id => question.choices.find(c => c.id === id).text).join('; ') : answer.text;
+        const explanation = document.createElement('p');
+        explanation.className = 'comment-preview-line';
+        explanation.textContent = `${answer.explanation} (Độ tin cậy ${Math.round(answer.confidence * 100)}%)`;
+        card.append(title, value, prompt, explanation);
+        elements.aiAnswers.append(card);
+    }
+}
+
+async function exportAiResult() {
+    const { k12LastAiResult } = await chrome.storage.local.get('k12LastAiResult');
+    if (!k12LastAiResult) { elements.aiStatus.textContent = 'Chưa có kết quả AI để xuất.'; return; }
+    const exercise = K12AI.validateExercise(k12LastAiResult.exercise);
+    const result = K12AI.validateAnswers(exercise, k12LastAiResult.result);
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ exercise, result, time: k12LastAiResult.time,
+        submitted: k12LastAiResult.submitted === true, completed: k12LastAiResult.completed === true }, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'k12-ai-result.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    elements.aiStatus.textContent = 'Đã xuất đề và đáp án AI gần nhất.';
+}
+
+async function solveCurrentExercise() {
+    if (state.aiBusy || state.processing) return;
+    state.aiBusy = true;
+    renderLessons();
+    elements.aiCurrent.disabled = true;
+    elements.aiStatus.textContent = 'Đang đọc câu hỏi trên trang K12...';
+    let readCount = 0;
+    try {
+        await ensureServerPermission();
+        const tab = await getActiveTab();
+        if (!tab || !isK12Url(tab.url)) throw new Error('Hãy mở trang câu hỏi K12.');
+        const read = await sendToTab(tab.id, { action: 'prepareExercise' });
+        if (!read?.ok) throw new Error(read?.message || 'Không đọc được câu hỏi.');
+        readCount = read.exercise.questions.length;
+        await chrome.storage.local.set({ k12LastReadExercise: read.exercise });
+        elements.aiStatus.textContent = `Đã đọc ${read.exercise.questions.length} câu. Đang gọi AI...`;
+        const result = await solveExercise(read.exercise);
+        if (elements.aiSubmitToggle.checked) {
+            elements.aiStatus.textContent = 'Đang gửi đáp án và kiểm tra tiến độ K12...';
+            const sent = await sendToTab(tab.id, { action: 'submitExercise', exercise: read.exercise, result });
+            if (!sent?.ok) throw new Error(sent?.message || 'Không nộp được bài.');
+            await chrome.storage.local.set({ k12LastAiResult: { exercise: read.exercise, result, time: new Date().toISOString(), ...sent } });
+            elements.aiStatus.textContent = sent.message;
+        } else elements.aiStatus.textContent = 'Đã nhận đáp án AI. Chưa nộp bài.';
+    } catch (error) { elements.aiStatus.textContent = `${readCount ? `Đã đọc ${readCount} câu. ` : ''}${error.message}`; }
+    finally { state.aiBusy = false; elements.aiCurrent.disabled = false; renderLessons(); }
+}
+
+async function inspectCurrentExercise() {
+    if (state.processing || state.aiBusy) return;
+    state.aiBusy = true;
+    elements.aiRead.disabled = true;
+    renderLessons();
+    try {
+        const tab = await getActiveTab();
+        if (!tab || !isK12Url(tab.url)) throw Error('Hãy mở một bài tập K12.');
+        const read = await sendToTab(tab.id, { action: 'prepareExercise' });
+        if (!read?.ok) throw Error(read?.message || 'Không đọc được đề.');
+        const exercise = K12AI.validateExercise(read.exercise);
+        await chrome.storage.local.set({ k12LastReadExercise: exercise });
+        elements.aiStatus.textContent = `Đã đọc ${exercise.questions.length} câu/ý, ${exercise.images?.length || 0} hình${exercise.pdf_url ? ', kèm đề PDF' : ''}.`;
+    } catch (error) { elements.aiStatus.textContent = error.message; }
+    finally { state.aiBusy = false; elements.aiRead.disabled = false; renderLessons(); }
+}
+
+async function exportReadExercise() {
+    const { k12LastReadExercise } = await chrome.storage.local.get('k12LastReadExercise');
+    if (!k12LastReadExercise) { elements.aiStatus.textContent = 'Hãy đọc đề trước khi xuất dữ liệu.'; return; }
+    const exercise = K12AI.validateExercise(k12LastReadExercise);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(exercise, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'k12-exercise.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    elements.aiStatus.textContent = `Đã xuất ${exercise.questions.length} câu/ý; dữ liệu không chứa token phiên.`;
+}
+
+async function solveSelectedExercises() {
+    if (state.processing || state.aiBusy) return;
+    const selected = state.candidates.filter(c => state.selected.has(candidateKey(c)));
+    if (!selected.length) return;
+    state.processing = true;
+    renderLessons();
+    let solved = 0;
+    try {
+        await ensureServerPermission();
+        for (let index = 0; index < selected.length; index += 1) {
+            const candidate = selected[index];
+            elements.bulkStatus.textContent = `Đọc đề ${index + 1}/${selected.length}: ${candidate.title}`;
+            try {
+                const list = await chrome.runtime.sendMessage({ action: 'getCandidateExercises', candidate, tabId: state.tabId });
+                if (!list?.ok) throw new Error(list?.message || 'Không tìm thấy nội dung.');
+                let count = 0;
+                const failures = [];
+                for (const item of list.candidates) {
+                    let read;
+                    try {
+                        read = await chrome.runtime.sendMessage({ action: 'prepareCandidateExercise', candidate: item });
+                        if (!read?.ok) { if (!read?.notExercise) failures.push(`${item.title}: ${read?.message || 'Không đọc được bài tập'}`); continue; }
+                        const result = await solveExercise(read.exercise);
+                        if (elements.aiSubmitToggle.checked) {
+                            const sent = await sendToTab(read.tabId, { action: 'submitExercise', exercise: read.exercise, result });
+                            if (!sent?.ok || !sent.completed) throw new Error(sent?.message || 'Chưa xác minh được bài hoàn thành.');
+                            await chrome.storage.local.set({ k12LastAiResult: { exercise: read.exercise, result, time: new Date().toISOString(), ...sent } });
+                        }
+                        count++;
+                    } catch (error) {
+                        failures.push(`${item.title}: ${error.message}`);
+                    } finally {
+                        if (read?.tabId) await chrome.runtime.sendMessage({ action: 'releaseExerciseTab', tabId: read.tabId }).catch(() => {});
+                    }
+                }
+                if (!count && !failures.length) throw new Error('Không tìm thấy bài tập trong nội dung bài học; các mục đã đọc là tài liệu hoặc video.');
+                if (failures.length) throw new Error(`${count} bài tập xử lý xong. ${failures.join(' ')}`);
+                state.results.set(candidateKey(candidate), { ok: true, kind: elements.aiSubmitToggle.checked ? 'exercise' : 'ai', message: `${count} bài tập ${elements.aiSubmitToggle.checked ? 'được K12 xác nhận hoàn thành.' : 'đã có đáp án; chưa nộp.'}` });
+                solved += 1;
+            } catch (error) { state.results.set(candidateKey(candidate), { ok: false, message: error.message }); }
+            renderLessons();
+        }
+        elements.bulkStatus.textContent = `Xử lý xong ${solved}/${selected.length} bài học.${elements.aiSubmitToggle.checked ? ' Tiến độ được xác minh từ K12.' : ' Chưa nộp đáp án lên K12.'}`;
+    } finally { state.processing = false; renderLessons(); }
+}
+
+async function runSelectedWorkflow() {
+    if (state.processing || state.aiBusy || !state.tabId) return;
+    try { await ensureServerPermission(); }
+    catch (error) { elements.bulkStatus.textContent = error.message; return; }
+    const selected = state.candidates.filter(c => state.selected.has(candidateKey(c)));
+    if (!selected.length) return;
+    state.processing = true;
+    renderLessons();
+    let succeeded = 0;
+    const sourceTabId = state.tabId;
+    try {
+        for (const [index, candidate] of selected.entries()) {
+            elements.bulkStatus.textContent = `Quy trình ${index + 1}/${selected.length}: ${candidate.subject || 'Chưa rõ môn'} — ${candidate.title}`;
+            try {
+                const rule = subjectRule(candidate.subject || '');
+                if ((rule.comment || (rule.view && rule.materialComment)) && !hasCompleteCommentProfile(state.commentProfile)) {
+                    throw new Error('Cần nhập đủ Tên, Lớp và Mã số trong Quản lý trước khi chạy môn có bình luận.');
+                }
+                const list = await chrome.runtime.sendMessage({ action: 'getCandidateExercises', candidate, tabId: sourceTabId });
+                if (!list?.ok) throw new Error(list?.message || 'Không tìm thấy nội dung bài học.');
+                const outcome = await K12Workflow.run(list.candidates, rule, {
+                    prepare: item => chrome.runtime.sendMessage({ action: 'prepareCandidateExercise', candidate: item }),
+                    complete: item => sendToTab(sourceTabId, { action: 'completeLessonFromSidebar', candidate: { ...item, subject: candidate.subject } }),
+                    solve: solveExercise,
+                    submit: async (opened, result) => {
+                        const sent = await sendToTab(opened.tabId, { action: 'submitExercise', exercise: opened.exercise, result });
+                        await chrome.storage.local.set({ k12LastAiResult: { exercise: opened.exercise, result, time: new Date().toISOString(), ...sent } });
+                        return sent;
+                    },
+                    comment: (opened, result) => sendToTab(opened.tabId, { action: 'postExerciseComment', exercise: opened.exercise, result }),
+                    release: tabId => chrome.runtime.sendMessage({ action: 'releaseExerciseTab', tabId }).catch(() => {})
+                });
+                const message = outcome.records.map(record => `${record.item.title || record.item.coursewareId}: ${record.message}`).join(' ');
+                state.results.set(candidateKey(candidate), { ok: outcome.ok, kind: 'workflow', message });
+                if (outcome.completed) candidate.progress = '100%';
+                if (outcome.ok) { state.selected.delete(candidateKey(candidate)); succeeded++; }
+            } catch (error) { state.results.set(candidateKey(candidate), { ok: false, message: error.message }); }
+            renderLessons();
+        }
+        elements.bulkStatus.textContent = `Đã xử lý ${succeeded}/${selected.length} bài học; xem từng thẻ để biết kết quả.`;
+        elements.bulkStatus.className = succeeded === selected.length ? 'bulk-status success' : 'bulk-status error';
+    } finally { state.processing = false; renderLessons(); }
+}
+
+async function exportApiCapture() {
+    const { k12ApiCaptures = [] } = await chrome.storage.local.get('k12ApiCaptures');
+    const url = URL.createObjectURL(new Blob([JSON.stringify(K12AI.redact(k12ApiCaptures), null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'k12-api-capture.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    elements.aiStatus.textContent = `Đã xuất ${k12ApiCaptures.length} request/response đã che token.`;
 }
 
 function normalizeCommentProfile(profile) {

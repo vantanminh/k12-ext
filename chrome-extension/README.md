@@ -1,178 +1,49 @@
-# K12 Video Runner
+# K12 Video Runner 1.6.0
 
-Chrome extension này có sidebar Chrome để chọn nhiều bài học đang hiển thị trên trang K12 và đánh dấu hoàn thành. Người dùng có thể bật bình luận tự động theo tên, lớp và mã số trong mục Quản lý. Nút `Hoàn thành bài` nổi trên từng trang bài học vẫn có thể bật hoặc tắt tại đó.
+Tiện ích Chrome quản lý bài học K12 từ trang **Bài giảng học tự do**. Backend Rust nhận đề, gọi OpenAI và trả đáp án. Cookie và token đăng nhập K12 được giữ trong trình duyệt.
 
-## Tải bản đóng gói sẵn từ GitHub Release
+## Cài và cập nhật
 
-Repo đã có workflow tự động đóng gói extension thành file zip để người dùng tải về nhanh.
+1. Giải nén `chrome-extension-k12.zip`, hoặc dùng thư mục `G:\k12-ext\chrome-extension`.
+2. Trong `chrome://extensions`, bật Developer mode và chọn Load unpacked.
+3. Khi cập nhật, bấm Reload trên tiện ích, rồi tải lại trang K12.
+4. Chạy `server\start.ps1`. Script build mã nguồn mới bằng Cargo và khởi động lại đúng executable.
+5. Tab **AI bài tập**: nhập địa chỉ server và token kết nối do bạn cấu hình. OpenAI API key chỉ nằm trên server.
 
-### Với người dùng cuối
+Chrome cần thư mục đã giải nén, không nạp trực tiếp ZIP. Workflow GitHub Release trong `.github/workflows/release-extension.yml` đóng gói thư mục này khi phát hành tag.
 
-1. Mở trang `Releases` của repo trên GitHub.
-2. Tải file asset dạng `k12-video-runner-x.y.z.zip` trong phần `Assets`.
-3. Giải nén file zip.
-4. Vào `chrome://extensions`.
-5. Bật `Developer mode`.
-6. Bấm `Load unpacked`.
-7. Chọn thư mục `k12-video-runner` vừa giải nén.
+## Từ trang chủ đến từng nội dung
 
-Lưu ý: Chrome không nạp trực tiếp file zip. Cần giải nén trước rồi mới `Load unpacked` thư mục bên trong.
+- Mở trang Bài giảng học tự do đã đăng nhập, bấm biểu tượng K12.
+- **Tìm bài trong toàn bộ danh sách** quét mọi trang và đối chiếu tổng số bài K12 công bố. Đã thử trực tiếp: 48 bài trên 3 trang, có tên môn và tiến độ.
+- Lọc môn, tìm tên, chọn bài. Mục **Quản lý** cấu hình riêng cho từng môn.
+- **Chạy quy trình theo môn cho bài đã chọn** mở tab nền của từng bài, nhận diện các tài liệu/video/bài tập bên trong rồi thực hiện quy tắc đã chọn. Các tab do tiện ích tạo sẽ được đóng sau khi xử lý.
+- Tiến độ 100% chỉ được hiển thị khi K12 xác nhận đúng nội dung. Lỗi từng bài được giữ trên thẻ để xem lại.
 
-### Với người phát hành
+## Quy tắc theo môn
 
-Workflow release nằm ở `.github/workflows/release-extension.yml` và hỗ trợ 2 cách:
+Bài tập có bốn cách xử lý: bỏ qua; nộp đáp án; bình luận đáp án; nộp và bình luận. Tài liệu/video có tùy chọn đánh dấu đã đọc/xem và tùy chọn bình luận riêng.
 
-1. Tạo tag dạng `v1.0.0` rồi push lên GitHub để workflow tự tạo release.
-2. Vào tab `Actions` trên GitHub, chạy thủ công workflow `Release Chrome Extension` và nhập `tag_name`.
+Bình luận cần đủ **Tên, Lớp, Mã số**, theo thứ tự `Tên - Lớp - Mã số - đáp án`. Đề PDF dùng A/B/C/D; đề Đúng/Sai nhóm theo câu và ý a/b/c/d. Tài liệu/video dùng nội dung `đã xem ạ`. Hồ sơ và quy tắc được lưu cục bộ trong Chrome.
 
-Mỗi lần chạy thành công, workflow sẽ:
+Các nội dung đã đạt 100% được bỏ qua khi chỉ cần nộp/đánh dấu. Khi yêu cầu cả bình luận, tiện ích vẫn xử lý phần bình luận cần thiết. Lịch sử bình luận ngăn gửi trùng; nếu mất kết nối khi gửi, phải kiểm tra Thảo luận trước khi xử lý lại.
 
-- đóng gói toàn bộ thư mục `chrome-extension`
-- tạo file zip có thư mục gốc là `k12-video-runner`
-- upload file zip làm artifact
-- tạo hoặc cập nhật GitHub Release cùng asset tải về
+## AI bài tập
 
-## Cài đặt trên Chrome bằng Developer mode
+Reader hỗ trợ biểu mẫu PDF chọn một đáp án và biểu mẫu K12 Đúng/Sai: 10 câu × 4 ý thành 40 ý. Reader chờ nội dung tải đủ, giữ các cột bảng và gửi hình minh họa cùng đề. Tên lấy từ phần panel-title, không lấy CSS hoặc thanh công cụ.
 
-Extension này chưa được đưa lên Chrome Web Store, nên cần cài thủ công bằng chế độ dành cho nhà phát triển.
+Tab AI có công cụ đọc đề, xuất JSON đề đã chuẩn hóa, kiểm tra server và xem đáp án. **Nộp đáp án AI lên K12 sau khi giải** là tùy chọn riêng cho thao tác giải thử; mặc định tắt. Quy trình theo môn dùng quy tắc trong Quản lý.
 
-### 1. Chuẩn bị thư mục extension
+Server kiểm tra đủ câu, ID đáp án và độ tin cậy. Adapter nộp chỉ gửi khi mỗi đáp án đạt ít nhất 70%, đề không đổi và form thuộc Courseware.Exercise. Đáp án AI chưa phải bằng chứng đã nộp hoặc hoàn thành.
 
-Đảm bảo bạn đang có đầy đủ các file sau trong cùng một thư mục:
+Đề PDF gửi URL upload K12. Đề văn bản gửi nội dung, bảng và URL hình; Rust tải hình công khai, nhận dạng PNG/JPEG/GIF/WebP từ dữ liệu rồi gửi ảnh trực tiếp cho OpenAI. Courseware.Exam và các kiểu chưa xác minh được báo rõ và không tự đánh dấu hoàn thành.
 
-- `manifest.json`
-- `content.js`
-- `styles.css`
-- `service-worker.js`
-- `sidepanel.html`
-- `sidepanel.css`
-- `sidepanel.js`
-- `README.md`
+## Chẩn đoán
 
-Thư mục cần chọn khi cài là:
+Bật **Ghi API K12** để ghi fetch/XHR LMS và các POST dựng lại nội dung có service LMS. HTML chỉ ghi metadata, không lưu toàn bộ vào log tiện ích. Cookie, token và trường tài khoản được che. Bấm **Xuất dữ liệu API đã ghi** để tải JSON về máy; log không được gửi đến AI.
 
-`d:\code\k12-ext\chrome-extension`
+Nếu gặp thông báo server cũ, chạy lại `start.ps1` và tải lại tiện ích. Nếu đề chưa tải đủ, tải lại trang bài. Khi phiên K12 hết hạn, đăng nhập lại bằng trình duyệt.
 
-Lưu ý: Chrome yêu cầu chọn **thư mục gốc của extension**, không chọn từng file riêng lẻ.
+Một số bài yêu cầu xem tài liệu trước rồi mới cho mở bài tập. Khi K12 báo hoàn thành nội dung theo thứ tự, bật đánh dấu đã xem và dùng quy trình theo môn từ trang danh sách. Trang kết quả có nút Làm lại được báo riêng; tiện ích không tự mở lượt làm lại để đọc đề.
 
-### 2. Mở trang quản lý extension của Chrome
-
-Có 2 cách:
-
-1. Mở Chrome, nhập `chrome://extensions` vào thanh địa chỉ rồi Enter.
-2. Hoặc bấm menu 3 chấm ở góc phải trên cùng -> `Extensions` -> `Manage Extensions`.
-
-### 3. Bật Developer mode
-
-Ở góc phải trên của trang `chrome://extensions`, bật công tắc `Developer mode`.
-
-Khi bật xong, Chrome sẽ hiện thêm 3 nút:
-
-- `Load unpacked`
-- `Pack extension`
-- `Update`
-
-### 4. Nạp extension vào Chrome
-
-1. Bấm `Load unpacked`.
-2. Chọn thư mục:
-
-	`d:\code\k12-ext\chrome-extension`
-
-3. Bấm `Select Folder`.
-
-Nếu không có lỗi, bạn sẽ thấy extension `K12 Video Runner` xuất hiện trong danh sách extension đang cài.
-
-### 5. Kiểm tra extension đã được nạp thành công
-
-Sau khi load xong, Chrome thường hiển thị một thẻ extension có:
-
-- Tên extension: `K12 Video Runner`
-- Version: `1.3.1`
-- Trạng thái đang bật
-
-Nếu Chrome báo lỗi ở file `manifest.json` hoặc `content.js`, cần sửa lỗi rồi quay lại trang `chrome://extensions` và bấm `Reload` trên extension đó.
-
-### 6. Ghim icon extension ra thanh công cụ
-
-Bước này không bắt buộc vì extension chạy trực tiếp trên trang, nhưng nên làm để dễ quản lý:
-
-1. Bấm biểu tượng `Extensions` ở bên phải thanh địa chỉ Chrome.
-2. Tìm `K12 Video Runner`.
-3. Bấm biểu tượng ghim để pin nó ra thanh toolbar. Bấm icon K12 Video Runner để mở sidebar.
-
-### 7. Sử dụng trên trang K12
-
-1. Đăng nhập vào hệ thống `https://hcm.k12online.vn`.
-2. Mở trang danh sách bài học hoặc một bài học, ví dụ dạng:
-
-	`https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/teacherList?...`
-
-3. Chờ trang tải xong.
-4. Bấm icon K12 Video Runner trên thanh công cụ để mở sidebar.
-5. Trong tab `Chọn bài`, chọn các bài muốn đánh dấu rồi bấm `Hoàn thành bài đã chọn`.
-
-Sidebar quét các dòng bài học trong danh sách hiện tại, ưu tiên module `#listingModule3`; mỗi dòng có `data-type="Lesson"` và `data-id` được nhận dạng cùng với liên kết courseware thông thường. Sidebar hiển thị tiến độ hiện tại. Với dòng danh sách, extension lấy liên kết chuẩn bằng API `Lesson/learn` khi người dùng bấm hoàn thành, rồi đọc dữ liệu bài để gọi API đánh dấu hoàn thành. Với bài học đang mở, nút nổi `Hoàn thành bài` vẫn thao tác một lần như trước. Trong tab `Quản lý`, có thể bật/tắt nút nổi, bật bình luận tự động, nhập Tên, Lớp, Mã số hoặc mở trang quản lý extension của Chrome.
-
-Với courseware không phải video, extension gửi yêu cầu `Courseware/markComplete` bằng phiên đăng nhập hiện tại. Với video, extension tiếp tục dùng API hoàn tất video hiện có. Khi bật bình luận tự động và hoàn thành bài thành công, extension gửi bình luận dạng `Tên - Lớp - Mã số - đã xem ạ` tới K12. Các thông tin này được lưu trong Chrome và chỉ gửi tới K12 khi tùy chọn đang bật. Sidebar hiển thị tiến độ và kết quả cho từng bài.
-
-### 8. Khi sửa code extension và muốn cập nhật
-
-Vì đây là bản cài bằng `Load unpacked`, mỗi lần bạn sửa code thì cần nạp lại bản mới:
-
-1. Lưu các file đã sửa.
-2. Mở lại `chrome://extensions`.
-3. Tìm `K12 Video Runner`.
-4. Bấm `Reload`.
-5. Quay lại tab K12 và refresh trang.
-
-### 9. Gỡ extension khỏi Chrome
-
-1. Mở `chrome://extensions`.
-2. Tìm `K12 Video Runner`.
-3. Bấm `Remove`.
-
-### 10. Lỗi thường gặp
-
-`Không thấy bài học trong sidebar`:
-
-- Trang hiện tại chưa có dòng bài học hoặc liên kết courseware trong danh sách đang hiển thị.
-- Trang chưa tải xong hoàn toàn.
-- Bạn đã load nhầm thư mục, không phải `d:\code\k12-ext\chrome-extension`.
-- Extension đang bị tắt trong `chrome://extensions`.
-
-`Bấm nút nhưng báo thiếu dữ liệu`:
-
-- Courseware thường cần `coursewareId`, `lessonId`, `courseSiteId`, `coursewareType`, `site` và `securityToken`.
-- Video có thể cần thêm `courseResultId`.
-
-`Bấm nút nhưng server trả lỗi`:
-
-- Phiên đăng nhập đã hết hạn.
-- Tài khoản không có quyền trên bài học đó.
-- Hệ thống K12 thay đổi cấu trúc request hoặc script nhúng của trang.
-
-## Cách dùng nhanh
-
-1. Vào `chrome://extensions`.
-2. Bật `Developer mode`.
-3. Bấm `Load unpacked`.
-4. Chọn thư mục `d:\code\k12-ext\chrome-extension`.
-5. Mở trang danh sách bài học K12 đã đăng nhập.
-6. Bấm icon extension, chọn bài trong sidebar và bấm `Hoàn thành bài đã chọn`.
-
-## Extension làm gì
-
-- Chỉ đọc nội dung trên `hcm.k12online.vn`; sidebar quét danh sách bài học đang hiển thị, gồm module `#listingModule3` khi có.
-- Tự đọc `lessonId` và tên bài từ các dòng `Lesson` của danh sách; khi người dùng bấm hoàn thành, lấy liên kết chuẩn bằng API `Lesson/learn`, rồi đọc `coursewareId`, `courseSiteId`, `coursewareType`, `site`, `securityToken` và các giá trị `options[...]` từ HTML/script của bài.
-- Gửi `POST` tới `Courseware/markComplete` cho courseware thường bằng phiên đăng nhập hiện tại; video tiếp tục dùng API hoàn tất video.
-- Có mục Quản lý để bật/tắt nút nổi trên trang và mở trang quản lý Chrome.
-- Có thể bật bình luận tự động sau khi hoàn thành bài; Tên, Lớp và Mã số do người dùng nhập được lưu cục bộ trong Chrome.
-- Chỉ gửi yêu cầu cho các bài người dùng đã chọn và bấm hoàn thành.
-- Không lưu hoặc hardcode cookie và token đăng nhập; phần bình luận lấy token theo trang K12 hiện tại.
-- Nếu phản hồi khác hoặc request lỗi, trạng thái lỗi sẽ hiển thị ngay cạnh nút.
-
-## Ghi chú
-
-- Extension không hardcode cookie hay token đăng nhập.
-- Nếu hệ thống đổi cấu trúc script nhúng trên trang, cần cập nhật regex trong `content.js`.
+Chi tiết API và bằng chứng thử thật: [docs/exercise-workflow.md](../docs/exercise-workflow.md). Cấu hình localhost/Railway: [server/README.md](../server/README.md).

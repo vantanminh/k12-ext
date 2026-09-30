@@ -300,7 +300,7 @@
                 missingFields.push('securityToken');
             }
 
-            return { kind: 'video', payload, commentContext, missingFields };
+            return { kind: 'video', payload, commentContext, missingFields, pageUrl: parsedUrl.href };
         }
 
         const payload = {
@@ -326,7 +326,7 @@
                 }
             });
 
-        return { kind: 'courseware', payload, commentContext, missingFields };
+        return { kind: 'courseware', payload, commentContext, missingFields, pageUrl: parsedUrl.href };
     }
 
     function extractPayload() {
@@ -368,8 +368,8 @@
     }
 
     function getLessonCandidate(element) {
-        const row = element.closest(
-            '[data-type="Lesson"][data-id], [data-lesson-id], [data-courseware-id], tr, li, [class*="lesson"], [class*="courseware"], [class*="item"]'
+        const row = element.closest('tr') || element.closest(
+            '[data-type="Lesson"][data-id], [data-type^="Courseware"][data-id], [data-lesson-id], [data-courseware-id], tr, li, [class*="lesson"], [class*="courseware"], [class*="item"]'
         ) || element;
         const nestedLink = row.querySelector('a[href], [data-href], [data-url], [onclick]');
         const pageUrl = getElementLessonUrl(element) || (nestedLink ? getElementLessonUrl(nestedLink) : null);
@@ -377,7 +377,8 @@
         const rowLessonId = row.getAttribute('data-lesson-id')
             || (rowType === 'lesson' ? row.getAttribute('data-id') : '')
             || '';
-        const rowCoursewareId = row.getAttribute('data-courseware-id') || '';
+        const rowCoursewareId = row.getAttribute('data-courseware-id')
+            || (rowType.startsWith('courseware') ? row.getAttribute('data-id') : '') || '';
 
         if (!pageUrl && !rowLessonId) {
             return null;
@@ -397,7 +398,8 @@
             coursewareId: rowCoursewareId,
             courseSiteId: row.getAttribute('data-course-site-id') || '',
             site: row.getAttribute('data-site') || '',
-            coursewareType: row.getAttribute('data-courseware-type') || '',
+            coursewareType: row.getAttribute('data-courseware-type')
+                || (rowType.startsWith('courseware') ? row.getAttribute('data-type') : '') || '',
             scheduleId: row.getAttribute('data-schedule-id') || '',
             courseId: row.getAttribute('data-course-id') || '',
             classroomId: row.getAttribute('data-classroom-id') || '',
@@ -430,19 +432,30 @@
         const lessonId = pageUrl
             ? candidateUrl.pathname.split('/').pop()
             : rowLessonId;
+        // JavaScript pseudo-links such as VHV.App.modules[2].doExercise()
+        // are actions, not lesson routes.
+        if (!/^[a-f0-9]{24}$/i.test(lessonId)) return null;
         const coursewareId = params.get('coursewareId') || rowCoursewareId;
         const courseSiteId = params.get('courseSiteId') || '';
         const site = params.get('site') || '';
         const key = `${lessonId}:${coursewareId || ''}:${courseSiteId}:${site}`;
         const labelContainer = element.closest('tr, li, [class*="lesson"], [class*="courseware"], [class*="item"]') || element;
-        const rowTitle = row.querySelector('[data-column-index="4"] strong, [data-column-index="4"] button, [data-column-index="4"] a')?.textContent;
+        const titleCell = row.querySelector('[data-column-index="4"]') || (row.tagName === 'TR' ? row.children[3] : null);
+        const rowTitle = titleCell?.querySelector('strong, button, a')?.textContent
+            || titleCell?.textContent.split(/Môn học:/i)[0];
         const titleText = rowTitle
             || element.getAttribute('title')
             || element.textContent
             || labelContainer.textContent
             || `Bài học ${lessonId}`;
         const title = titleText.replace(/\s+/g, ' ').trim().slice(0, 140) || `Bài học ${lessonId}`;
-        const progress = row.querySelector('[data-column-index="6"]')?.textContent.trim() || '';
+        const nativePercent = document.querySelector(`.coursewarePercent${coursewareId}`)?.textContent.trim();
+        const progressCell = row.querySelector('[data-column-index="6"]') || (row.tagName === 'TR' ? row.children[5] : null);
+        const progress = progressCell?.textContent.trim() || (nativePercent ? `${nativePercent}%` : '');
+        const subjectText = titleCell?.textContent || row.textContent || '';
+        const subject = (subjectText.match(/Môn học:\s*(.*?)(?=\s*Giáo viên:|$)/i)?.[1] || '').replace(/\s+/g, ' ').trim() || pageSubject();
+        const exerciseLink = Array.from(row.querySelectorAll('a[href]')).find(link =>
+            /\/LMS\/Lesson\/Student\/listExercise\//i.test(link.getAttribute('href') || ''));
 
         return {
             key,
@@ -453,7 +466,9 @@
             courseSiteId,
             site,
             coursewareType: params.get('coursewareType') || '',
+            subject,
             progress,
+            exerciseListHref: exerciseLink ? new URL(exerciseLink.getAttribute('href'), location.href).href : '',
             requiresLessonLink: !pageUrl && rowType === 'lesson'
         };
     }
@@ -470,13 +485,17 @@
             const currentKey = `${lessonId}:${coursewareId}:${courseSiteId}:${site}`;
             lessons.set(currentKey, {
                 key: currentKey,
-                title: document.title || `Bài học ${lessonId}`,
+                title: document.querySelector('#module2 .panel-heading .panel-title')?.textContent.trim() || document.title || `Bài học ${lessonId}`,
                 href: currentPage.href,
                 lessonId,
                 coursewareId,
                 courseSiteId,
                 site,
-                coursewareType: currentPage.searchParams.get('coursewareType') || ''
+                subject: (Array.from(document.querySelectorAll('.lesson-header .gradeSubject span'))
+                    .find(span => /^Môn học:/i.test(span.textContent.trim()))?.textContent || '')
+                    .replace(/^Môn học:\s*/i, '').trim(),
+                coursewareType: getCoursewareType(getInlineScriptSource(), document, currentPage.href),
+                progress: document.querySelector(`.coursewarePercent${coursewareId}`)?.textContent.trim() === '100' ? '100%' : ''
             });
         }
 
@@ -497,12 +516,23 @@
 
         elements.forEach((element) => {
             const candidate = getLessonCandidate(element);
-            if (candidate && !lessons.has(candidate.key)) {
-                lessons.set(candidate.key, candidate);
+            if (candidate) {
+                const previous = lessons.get(candidate.key);
+                if (!previous) lessons.set(candidate.key, candidate);
+                else if (isCoursewarePageUrl() && candidate.coursewareType) lessons.set(candidate.key, { ...previous, ...candidate,
+                    subject: candidate.subject || previous.subject, progress: candidate.progress || previous.progress });
             }
         });
 
         return Array.from(lessons.values());
+    }
+
+    function listPagination() {
+        const root = document.querySelector('#module3') || document.querySelector('#listingModule3');
+        const text = root?.textContent || '';
+        const total = Number(text.match(/Tổng số bản ghi:\s*(\d+)/i)?.[1] || 0);
+        const pageSize = Number(text.match(/(\d+)\s*\/\s*trang/i)?.[1] || 20);
+        return { total, pageSize, pages: total ? Math.ceil(total / pageSize) : 0 };
     }
 
     async function resolveLessonPageUrl(candidate) {
@@ -567,6 +597,7 @@
     }
 
     function fillCandidatePayload(request, candidate) {
+        request.subject = candidate.subject || '';
         const query = new URL(candidate.href, location.href).searchParams;
         const candidateValue = (name) => candidate[name] || query.get(name) || '';
         const commentContext = request.commentContext || {};
@@ -812,13 +843,20 @@
         return { ok: true, data };
     }
 
-    async function submitAutomaticComment(commentContext) {
+    function pageSubject(sourceDocument = document) {
+        return (Array.from(sourceDocument.querySelectorAll('.lesson-header .gradeSubject span'))
+            .find(span => /^Môn học:/i.test(span.textContent.trim()))?.textContent || '')
+            .replace(/^Môn học:\s*/i, '').trim();
+    }
+
+    async function submitAutomaticComment(commentContext, answerSummary = '', subject = '') {
         const settings = await chrome.storage.local.get({
             k12AutoCommentEnabled: false,
-            k12AutoCommentProfile: { name: '', className: '', studentId: '' }
+            k12AutoCommentProfile: { name: '', className: '', studentId: '' },
+            k12SubjectRules: {}
         });
-
-        if (settings.k12AutoCommentEnabled !== true) {
+        const rule = K12AI.subjectRule(settings.k12SubjectRules?.[subject || pageSubject()], settings.k12AutoCommentEnabled);
+        if (!(answerSummary ? rule.comment : rule.materialComment)) {
             return { ok: true, commented: false };
         }
 
@@ -845,10 +883,18 @@
             'fields[courseId]': context.courseId || '',
             'fields[scheduleId]': context.scheduleId || '',
             'fields[lessonId]': context.lessonId,
-            'fields[title]': [name, className, studentId, 'đã xem ạ'].join(' - '),
+            'fields[title]': [name, className, studentId, answerSummary || 'đã xem ạ'].join(' - '),
             site: context.site,
             securityToken: context.securityToken
         };
+        const { k12CommentHistory = [] } = await chrome.storage.local.get('k12CommentHistory');
+        const historyKey = `${context.lessonId}:${context.objectType}:${context.objectId}`;
+        const prior = k12CommentHistory.find(entry => entry.key === historyKey && entry.text === payload['fields[title]']);
+        if (prior?.state === 'sent') return { ok: true, commented: true, duplicateSkipped: true, message: 'Bình luận này đã gửi trước đó.' };
+        if (prior?.state === 'pending') return { ok: false, message: 'Lần gửi bình luận trước chưa xác định kết quả; hãy kiểm tra phần Thảo luận trước khi gửi lại.' };
+        const entry = { key: historyKey, text: payload['fields[title]'], state: 'pending', time: new Date().toISOString() };
+        const history = [entry, ...k12CommentHistory].slice(0, 100);
+        await chrome.storage.local.set({ k12CommentHistory: history });
         const response = await fetch(COMMENT_ENDPOINT, {
             method: 'POST',
             credentials: 'include',
@@ -862,6 +908,7 @@
         const { rawText, data } = await parseResponse(response);
 
         if (!response.ok) {
+            await chrome.storage.local.set({ k12CommentHistory });
             return { ok: false, message: getErrorMessage(response, data, rawText) };
         }
 
@@ -873,6 +920,7 @@
         }
 
         if (data === false || data === 0) {
+            await chrome.storage.local.set({ k12CommentHistory });
             return { ok: false, message: getErrorMessage(response, data, rawText) };
         }
 
@@ -880,14 +928,26 @@
             const status = data.status == null ? '' : String(data.status).toUpperCase();
             if ((status && status !== 'SUCCESS' && status !== 'OK')
                 || data.success === false || data.ok === false || data.error) {
+                await chrome.storage.local.set({ k12CommentHistory });
                 return { ok: false, message: getErrorMessage(response, data, rawText) };
             }
         }
-
-        return { ok: true, commented: true };
+        if (!data || typeof data !== 'object' || !['SUCCESS', 'OK'].includes(String(data.status || '').toUpperCase())) {
+            return { ok: false, message: 'K12 chưa trả xác nhận bình luận thành công; hãy kiểm tra phần Thảo luận.' };
+        }
+        entry.state = 'sent';
+        entry.id = data.id || '';
+        await chrome.storage.local.set({ k12CommentHistory: history });
+        return { ok: true, commented: true, commentId: entry.id };
     }
 
     async function runCompletionWorkflow(request) {
+        if (request.payload['options[coursewareType]'] === 'Courseware.Exercise') {
+            return { ok: false, message: 'Bài tập cần đọc đề và nộp đáp án. Hãy dùng tính năng AI bài tập trong sidebar.' };
+        }
+        if (request.kind !== 'video' && request.payload['options[coursewareType]'] !== 'Courseware.PDF') {
+            return { ok: false, message: `Chưa hỗ trợ đánh dấu loại nội dung ${request.payload['options[coursewareType]'] || 'chưa xác định'}.` };
+        }
         const completion = request.kind === 'video'
             ? await submitVideoCompletion(request.payload)
             : await submitCoursewareCompletion(request.payload);
@@ -895,13 +955,23 @@
         if (!completion.ok) {
             return completion;
         }
+        if (request.kind !== 'video') {
+            try {
+                const page = await fetch(request.pageUrl, { credentials: 'include', cache: 'no-store' });
+                const doc = new DOMParser().parseFromString(await page.text(), 'text/html');
+                const percent = doc.querySelector(`.coursewarePercent${request.payload.coursewareId}`)?.textContent.trim();
+                if (!page.ok || new URL(page.url || request.pageUrl).origin !== location.origin || percent !== '100') {
+                    return { ok: false, completionOk: true, completed: false, message: 'K12 đã nhận yêu cầu đã xem; chưa xác minh được tiến độ 100%.' };
+                }
+            } catch (_) { return { ok: false, completionOk: true, completed: false, message: 'K12 đã nhận yêu cầu đã xem; tải lại tiến độ thất bại.' }; }
+        }
 
         const completionMessage = request.kind === 'video'
             ? 'Video đã hoàn tất. status=SUCCESS, percent=100.'
             : 'Bài học đã được đánh dấu hoàn thành.';
         let comment;
         try {
-            comment = await submitAutomaticComment(request.commentContext);
+            comment = await submitAutomaticComment(request.commentContext, '', request.subject);
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Không gửi được bình luận.';
             return {
@@ -921,6 +991,7 @@
 
         return {
             ok: true,
+            completed: true,
             message: completionMessage + (comment.commented ? ' Đã gửi bình luận tự động.' : '')
         };
     }
@@ -1042,7 +1113,8 @@
     }
 
     function ensureUi() {
-        if (!state.quickButtonEnabled || !isCoursewarePageUrl()) {
+        const exercisePage = isCoursewarePageUrl() && getCoursewareType(getInlineScriptSource(), document, location.href) === 'Courseware.Exercise';
+        if (!state.quickButtonEnabled || !isCoursewarePageUrl() || exercisePage) {
             state.confirmedVideoPage = false;
             state.confirmedUrl = '';
             removeUi();
@@ -1147,11 +1219,84 @@
 
     function setupMessageListener() {
         chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+            if (message.action === 'postExerciseComment') {
+                (async () => {
+                    if (JSON.stringify(K12AI.validateExercise(message.exercise)) !== JSON.stringify(K12Exercise.readExercise())) throw new Error('Đề đã thay đổi, cần đọc và giải lại trước khi bình luận.');
+                    if (message.result?.answers?.some(answer => answer.confidence < 0.7)) throw new Error('Có câu AI chưa chắc chắn; cần xem lại trước khi bình luận.');
+                    const summary = K12AI.formatAnswerSummary(message.exercise, message.result);
+                    const request = extractPayload();
+                    return submitAutomaticComment(request.commentContext, summary, pageSubject());
+                })().then(sendResponse, error => sendResponse({ ok: false, message: error.message }));
+                return true;
+            }
+            if (message.action === 'getLessonListUrls') {
+                const urls = new Set();
+                if (/\/LMS\/Lesson\/Student\/teacherList$/i.test(location.pathname)) {
+                    sendResponse({ ok: true, urls: [location.href] });
+                    return false;
+                }
+                for (const link of document.querySelectorAll('a[href]')) {
+                    try {
+                        const url = new URL(link.getAttribute('href'), location.href);
+                        if (url.origin !== location.origin || !/\/LMS\/Lesson\/Student\/(list|teacherList)$/i.test(url.pathname)) continue;
+                        // The free-learning route was verified in the live browser.
+                        if (/\/Student\/list$/i.test(url.pathname)) {
+                            url.pathname = url.pathname.replace(/\/list$/i, '/teacherList');
+                        }
+                        urls.add(url.href);
+                    } catch (_) {}
+                }
+                sendResponse({ ok: true, urls: Array.from(urls) });
+                return false;
+            }
+            if (message.action === 'advanceLessonPage') {
+                const next = Number(message.page);
+                const root = document.querySelector('#module3') || document.querySelector('#listingModule3') || document.querySelector('[id^="listingModule"]');
+                const link = root && Array.from(root.querySelectorAll('a')).find(a => a.textContent.trim() === String(next));
+                if (!Number.isInteger(next) || next < 2 || !link) {
+                    sendResponse({ ok: true, advanced: false });
+                    return false;
+                }
+                const before = getLessonCandidates().map(c => c.key).join('|');
+                // K12's pagination listener handles the click. Prevent its
+                // javascript:void(0) URL from navigating in the isolated world.
+                const preventNavigation = event => event.preventDefault();
+                link.addEventListener('click', preventNavigation);
+                try { link.click(); }
+                finally { link.removeEventListener('click', preventNavigation); }
+                const started = Date.now();
+                let lastSignature = '';
+                let stable = 0;
+                const timer = setInterval(() => {
+                    const lessons = getLessonCandidates();
+                    const signature = lessons.map(c => c.key).join('|');
+                    stable = signature && signature === lastSignature ? stable + 1 : 0;
+                    lastSignature = signature;
+                    if (signature !== before && stable >= 2) {
+                        clearInterval(timer);
+                        sendResponse({ ok: true, advanced: true, lessons, pagination: listPagination() });
+                    } else if (Date.now() - started > 15000) {
+                        clearInterval(timer);
+                        sendResponse({ ok: false, message: `Trang ${next} chưa tải được dữ liệu mới.` });
+                    }
+                }, 250);
+                return true;
+            }
+            if (message.action === 'resolveExerciseLesson') {
+                resolveLessonPageUrl(message.candidate).then(sendResponse, error => sendResponse({ ok: false, message: error.message }));
+                return true;
+            }
             if (message.action === 'getLessonCandidates') {
                 const lessons = getLessonCandidates();
+                const pagination = listPagination();
+                const listing = /\/LMS\/Lesson\/Student\/(list|teacherList)$/i.test(location.pathname);
+                const root = document.querySelector('#module3') || document.querySelector('#listingModule3');
+                const nextReady = pagination.pages < 2 || Array.from(root?.querySelectorAll('a') || []).some(a => a.textContent.trim() === '2');
                 sendResponse({
                     ok: true,
+                    ready: !listing || (lessons.length > 0 && lessons.every(c => /\d+\s*%/.test(c.progress)) && nextReady),
                     lessons,
+                    pagination,
                     message: lessons.length > 0
                         ? `${lessons.length} bài học tìm thấy trên trang.`
                         : 'Trang này chưa có bài học trong danh sách để chọn.'

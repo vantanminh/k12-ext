@@ -22,6 +22,7 @@
         <nav class="tabs" aria-label="Điều hướng sidebar">
             <button class="tab active" id="lessons-tab" type="button" aria-selected="true">Chọn bài</button>
             <button class="tab" id="manage-tab" type="button" aria-selected="false">Quản lý</button>
+            <button class="tab" id="ai-tab" type="button" aria-selected="false">AI bài tập</button>
         </nav>
 
         <main>
@@ -30,6 +31,7 @@
                     <div>
                         <h2>Bài học trên trang</h2>
                         <p id="scan-status">Quét danh sách bài học hiện tại.</p>
+                        <button id="discover-all" class="scan-button" type="button">Tìm bài trong toàn bộ danh sách</button>
                     </div>
                 </div>
 
@@ -37,6 +39,11 @@
                     <span aria-hidden="true">⌕</span>
                     <input id="lesson-search" type="search" placeholder="Tìm bài học" autocomplete="off">
                 </label>
+                <div class="dashboard-filters">
+                    <label for="subject-filter">Môn học</label>
+                    <select id="subject-filter"><option value="">Tất cả môn học</option></select>
+                    <span id="lesson-stats" aria-live="polite"></span>
+                </div>
 
                 <div class="selection-toolbar">
                     <label class="select-all-label">
@@ -55,11 +62,49 @@
                 </div>
 
                 <div class="bulk-footer">
-                    <button id="complete-selected" class="primary-button" type="button" disabled>
-                        Hoàn thành bài đã chọn
-                    </button>
+                    <button id="workflow-selected" class="primary-button" type="button" disabled>Chạy quy trình theo môn cho bài đã chọn</button>
+                    <div class="bulk-secondary">
+                        <button id="complete-selected" class="secondary-button" type="button" disabled>Đánh dấu tài liệu/video</button>
+                        <button id="ai-selected" class="secondary-button" type="button" disabled>Giải bài tập bằng AI</button>
+                    </div>
                     <div id="bulk-status" class="bulk-status" aria-live="polite"></div>
                 </div>
+            </section>
+
+            <section id="ai-view" class="view" aria-labelledby="ai-tab" hidden>
+                <div class="section-heading"><div>
+                    <h2>AI bài tập</h2>
+                    <p>Đọc đề K12, giải qua server Rust và xem đáp án.</p>
+                </div></div>
+                <div class="settings-card comment-profile-fields">
+                    <label class="profile-field" for="ai-server-url"><span>Server Rust</span>
+                        <input id="ai-server-url" type="url" value="http://127.0.0.1:3210" autocomplete="off">
+                    </label>
+                    <label class="profile-field" for="ai-server-token"><span>Token kết nối server</span>
+                        <input id="ai-server-token" type="password" autocomplete="off" placeholder="K12_SERVER_TOKEN">
+                    </label>
+                    <p class="comment-preview-line">OpenAI API key chỉ cấu hình trên server Rust.</p>
+                    <button id="ai-health" class="secondary-button" type="button">Kiểm tra server</button>
+                    <button id="ai-read" class="secondary-button" type="button">Chỉ đọc đề trên trang hiện tại</button>
+                    <button id="ai-export-exercise" class="secondary-button" type="button">Xuất dữ liệu đề đã đọc</button>
+                    <button id="ai-current" class="primary-button" type="button">Đọc đề trên trang hiện tại và giải</button>
+                    <button id="ai-export-result" class="secondary-button" type="button">Xuất đáp án AI gần nhất</button>
+                    <label class="select-all-label"><input id="ai-submit-toggle" type="checkbox"><span>Nộp đáp án AI lên K12 sau khi giải</span></label>
+                    <p class="comment-preview-line">Chỉ nộp khi đủ câu và mỗi đáp án có độ tin cậy từ 70%. Tiến độ được kiểm tra lại từ K12.</p>
+                    <p id="ai-status" class="bulk-status" aria-live="polite"></p>
+                </div>
+                <div class="settings-card">
+                    <label class="setting-row" for="api-record-toggle">
+                        <span class="setting-copy"><strong>Ghi API K12</strong>
+                            <span>Ghi API danh sách, mở đề và nộp bài để kiểm tra quy trình.</span>
+                        </span>
+                        <span class="switch"><input id="api-record-toggle" type="checkbox"><span class="switch-track" aria-hidden="true"></span></span>
+                    </label>
+                    <p class="comment-preview-line">Log nằm trên máy, token và cookie được che. Không gửi log tới OpenAI.</p>
+                    <button id="api-export" class="secondary-button" type="button">Xuất dữ liệu API đã ghi</button>
+                </div>
+
+                <div id="ai-answers" class="ai-answers" aria-live="polite"></div>
             </section>
 
             <section id="manage-view" class="view" aria-labelledby="manage-tab" hidden>
@@ -86,8 +131,8 @@
                 <div class="settings-card">
                     <label class="setting-row" for="auto-comment-toggle">
                         <span class="setting-copy">
-                            <strong>Tự động bình luận</strong>
-                            <span>Tự gửi bình luận sau khi đánh dấu bài hoàn thành.</span>
+                            <strong>Bình luận mặc định</strong>
+                            <span>Áp dụng cho môn chưa có quy tắc riêng bên dưới.</span>
                         </span>
                         <span class="switch">
                             <input id="auto-comment-toggle" type="checkbox">
@@ -114,6 +159,12 @@
                     </div>
                 </div>
 
+                <div class="settings-card">
+                    <strong>Quy tắc theo môn học</strong>
+                    <p class="comment-preview-line">Bài tập: giải và nộp đáp án. Tài liệu/video: đánh dấu đã đọc/xem. Bình luận: dùng thông tin cá nhân và đáp án khi có bài tập.</p>
+                    <div id="subject-rules" class="subject-rules"></div>
+                </div>
+
                 <div class="settings-card extension-info">
                     <div class="info-row">
                         <span>Phiên bản</span>
@@ -128,6 +179,8 @@
             </section>
         </main>
     </div>
+    <script src="ai-common.js"></script>
+    <script src="lesson-workflow.js"></script>
     <script src="sidepanel.js"></script>
 </body>
 </html>

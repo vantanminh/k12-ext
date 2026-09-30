@@ -1,4 +1,4 @@
-# K12 Video Runner 1.6.3
+# K12 Video Runner 1.7.0
 
 Tiện ích Chrome quản lý bài học K12 từ trang **Bài giảng học tự do**. Backend Rust nhận đề, gọi OpenAI và trả đáp án. Cookie và token đăng nhập K12 được giữ trong trình duyệt.
 
@@ -8,7 +8,7 @@ Tiện ích Chrome quản lý bài học K12 từ trang **Bài giảng học t�
 2. Trong `chrome://extensions`, bật Developer mode và chọn Load unpacked.
 3. Khi cập nhật, bấm Reload trên tiện ích, rồi tải lại trang K12.
 4. Chạy `server\start.ps1`. Script build mã nguồn mới bằng Cargo và khởi động lại đúng executable.
-5. Tab **AI bài tập**: nhập địa chỉ server và token kết nối do bạn cấu hình. OpenAI API key chỉ nằm trên server.
+5. Tab **AI bài tập**: nhập email, bấm **Gửi mã đăng nhập**, rồi nhập mã 6 số nhận qua email. Không cần mật khẩu. Địa chỉ server và token quản trị (không bắt buộc) nằm trong **Cấu hình server**. OpenAI API key chỉ nằm trên server.
 
 Chrome cần thư mục đã giải nén, không nạp trực tiếp ZIP. Workflow GitHub Release trong `.github/workflows/release-extension.yml` đóng gói thư mục này khi phát hành tag.
 

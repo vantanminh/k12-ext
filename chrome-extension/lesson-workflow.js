@@ -21,6 +21,11 @@
             let submitted = false;
             try {
                 let type = item.coursewareType;
+                if (rule.skipCompleted && complete(item)) {
+                    if (materialTypes.has(type)) materials.push(item);
+                    records.push({ item, skipped: true, completed: true, message: 'Đã 100%, bỏ qua.' });
+                    continue;
+                }
                 if (type === 'Courseware.Exercise' && rule.exerciseMode === 'skip') {
                     records.push({ item, skipped: true, message: 'Bỏ qua bài tập theo cấu hình môn.' });
                     continue;

@@ -11,6 +11,9 @@ use std::{collections::HashSet, sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 use tower_http::cors::{Any, CorsLayer};
 
+pub mod auth;
+pub use auth::{Auth, Mailer, Store};
+
 #[derive(Clone)]
 pub struct AppState {
     client: reqwest::Client,
@@ -19,6 +22,7 @@ pub struct AppState {
     server_token: String,
     responses_url: String,
     slots: Arc<Semaphore>,
+    auth: Arc<Auth>,
 }
 
 impl AppState {
@@ -39,7 +43,23 @@ impl AppState {
             server_token,
             responses_url,
             slots: Arc::new(Semaphore::new(2)),
+            auth: Arc::new(Auth::default()),
         }
+    }
+
+    pub fn with_auth(mut self, auth: Auth) -> Self {
+        self.auth = Arc::new(auth);
+        self
+    }
+
+    /// Number of OpenAI calls processed at the same time across all users.
+    pub fn with_concurrency(mut self, slots: usize) -> Self {
+        self.slots = Arc::new(Semaphore::new(slots.max(1)));
+        self
+    }
+
+    pub fn auth(&self) -> &Auth {
+        &self.auth
     }
 }
 
@@ -114,6 +134,10 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/v1/solve", post(solve))
+        .route("/v1/auth/otp", post(auth::request_otp))
+        .route("/v1/auth/verify", post(auth::verify_otp))
+        .route("/v1/auth/me", get(auth::me))
+        .route("/v1/auth/logout", post(auth::logout))
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
         .layer(
             CorsLayer::new()
@@ -121,6 +145,7 @@ pub fn router(state: AppState) -> Router {
                 .allow_methods([Method::GET, Method::POST])
                 .allow_headers([
                     header::CONTENT_TYPE,
+                    header::AUTHORIZATION,
                     header::HeaderName::from_static("x-k12-token"),
                 ]),
         )
@@ -130,7 +155,9 @@ pub fn router(state: AppState) -> Router {
 async fn health(State(s): State<AppState>) -> Json<Value> {
     Json(
         json!({"ok":true,"service":"k12-ai-server","version":env!("CARGO_PKG_VERSION"),
-        "ready":!s.api_key.trim().is_empty() && !s.server_token.trim().is_empty(),
+        "ready":!s.api_key.trim().is_empty()
+            && (!s.server_token.trim().is_empty() || s.auth.email_login()),
+        "email_login":s.auth.email_login(),"daily_limit":s.auth.daily_limit,
         "protocol_version":2,"max_request_bytes":2 * 1024 * 1024,
         "api_key_configured":!s.api_key.trim().is_empty(),
         "connection_token_configured":!s.server_token.trim().is_empty(),"model":s.model}),
@@ -397,20 +424,7 @@ async fn solve(
     headers: HeaderMap,
     payload: Result<Json<SolveRequest>, JsonRejection>,
 ) -> Result<Json<SolveResponse>, ApiError> {
-    if s.server_token.trim().is_empty() {
-        return Err(error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "TOKEN_NOT_CONFIGURED",
-            "Chưa cấu hình K12_SERVER_TOKEN trên server.",
-        ));
-    }
-    if headers.get("x-k12-token").and_then(|v| v.to_str().ok()) != Some(s.server_token.as_str()) {
-        return Err(error(
-            StatusCode::UNAUTHORIZED,
-            "UNAUTHORIZED",
-            "Token kết nối server không đúng.",
-        ));
-    }
+    let caller = auth::authenticate(&s, &headers).await?;
     let Json(input) = payload.map_err(|rejection| {
         let status = rejection.status();
         error(
@@ -432,15 +446,25 @@ async fn solve(
             "Chưa cấu hình OPENAI_API_KEY trên server.",
         ));
     }
+    let reservation = auth::reserve(&s, &caller).await?;
+    let result = solve_upstream(&s, &input).await;
+    if result.is_err() {
+        // Failed solves do not count against the user's daily quota.
+        auth::refund(&s, reservation).await;
+    }
+    result.map(Json)
+}
+
+async fn solve_upstream(s: &AppState, input: &SolveRequest) -> Result<SolveResponse, ApiError> {
     let _permit = s.slots.try_acquire().map_err(|_| {
         error(
             StatusCode::TOO_MANY_REQUESTS,
             "BUSY",
-            "Server đang xử lý hai yêu cầu. Hãy thử lại sau.",
+            "Server đang bận xử lý đề khác. Hãy thử lại sau ít giây.",
         )
     })?;
-    let mut request = openai_body(&input, &s.model);
-    inline_images(&s.client, &input, &mut request).await?;
+    let mut request = openai_body(input, &s.model);
+    inline_images(&s.client, input, &mut request).await?;
     let response = s
         .client
         .post(&s.responses_url)
@@ -495,9 +519,9 @@ async fn solve(
     })?;
     let result =
         parse_openai(&body).map_err(|m| error(StatusCode::BAD_GATEWAY, "INVALID_ANSWERS", m))?;
-    validate_answers(&input, &result)
+    validate_answers(input, &result)
         .map_err(|m| error(StatusCode::BAD_GATEWAY, "INVALID_ANSWERS", m))?;
-    Ok(Json(result))
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -834,5 +858,234 @@ mod tests {
             "b"
         );
         handle.abort();
+    }
+
+    async fn call(
+        app: &Router,
+        method: &str,
+        uri: &str,
+        token: Option<&str>,
+        body: Value,
+    ) -> (StatusCode, Value) {
+        let mut request = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("content-type", "application/json");
+        if let Some(token) = token {
+            request = request.header("authorization", format!("Bearer {token}"));
+        }
+        let body = if body.is_null() {
+            Body::empty()
+        } else {
+            Body::from(serde_json::to_vec(&body).unwrap())
+        };
+        let response = app
+            .clone()
+            .oneshot(request.body(body).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), 65536).await.unwrap();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+
+    #[tokio::test]
+    async fn email_otp_login_quota_and_logout() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let sent: Arc<std::sync::Mutex<Vec<Value>>> = Arc::default();
+        let outbox = sent.clone();
+        let mock = Router::new()
+            .route(
+                "/emails",
+                post(move |headers: HeaderMap, Json(body): Json<Value>| async move {
+                    assert_eq!(headers["authorization"], "Bearer re-key");
+                    outbox.lock().unwrap().push(body);
+                    Json(json!({"id": "email-1"}))
+                }),
+            )
+            .route("/v1/responses", post(|| async {
+                Json(json!({"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":serde_json::to_string(&output("b")).unwrap()}]}]}))
+            }));
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, mock).await.unwrap();
+        });
+        let mailer = Mailer::Resend {
+            api_key: "re-key".into(),
+            from: "K12 AI <login@example.vn>".into(),
+            url: format!("{base}/emails"),
+        };
+        let app = router(
+            AppState::new(
+                "test-key".into(),
+                "test-model".into(),
+                "".into(),
+                format!("{base}/v1/responses"),
+            )
+            .with_auth(Auth::new(Store::memory(), mailer, 1, false)),
+        );
+        let solve_body = serde_json::to_value(input()).unwrap();
+        let email = "hoc.sinh@example.vn";
+
+        let (status, body) = call(&app, "POST", "/v1/solve", None, solve_body.clone()).await;
+        assert_eq!(
+            (status, body["code"].as_str()),
+            (StatusCode::UNAUTHORIZED, Some("UNAUTHORIZED"))
+        );
+        let (status, body) = call(
+            &app,
+            "POST",
+            "/v1/auth/otp",
+            None,
+            json!({"email": "no-at"}),
+        )
+        .await;
+        assert_eq!(
+            (status, body["code"].as_str()),
+            (StatusCode::UNPROCESSABLE_ENTITY, Some("INVALID_EMAIL"))
+        );
+
+        let (status, _) = call(
+            &app,
+            "POST",
+            "/v1/auth/otp",
+            None,
+            json!({"email": " Hoc.Sinh@Example.VN "}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, body) =
+            call(&app, "POST", "/v1/auth/otp", None, json!({"email": email})).await;
+        assert_eq!(
+            (status, body["code"].as_str()),
+            (StatusCode::TOO_MANY_REQUESTS, Some("OTP_RATE_LIMITED"))
+        );
+        let message = sent.lock().unwrap().pop().unwrap();
+        assert!(sent.lock().unwrap().is_empty());
+        assert_eq!(message["to"][0], email);
+        // Subject ends with the code: "Mã đăng nhập K12 AI: 123456".
+        let subject = message["subject"].as_str().unwrap();
+        let code = subject[subject.len() - 6..].to_string();
+        assert!(code.bytes().all(|b| b.is_ascii_digit()));
+        assert_eq!(code.len(), 6);
+        assert!(message["text"].as_str().unwrap().contains(&code));
+
+        let wrong = if code == "000000" { "111111" } else { "000000" };
+        let (status, body) = call(
+            &app,
+            "POST",
+            "/v1/auth/verify",
+            None,
+            json!({"email": email, "code": wrong}),
+        )
+        .await;
+        assert_eq!(
+            (status, body["code"].as_str()),
+            (StatusCode::UNAUTHORIZED, Some("INVALID_OTP"))
+        );
+        let (status, body) = call(
+            &app,
+            "POST",
+            "/v1/auth/verify",
+            None,
+            json!({"email": "HOC.SINH@example.vn", "code": code}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["email"], email);
+        let token = body["token"].as_str().unwrap().to_string();
+        assert!(token.starts_with("k12s_"));
+        // Codes are single-use.
+        let (status, _) = call(
+            &app,
+            "POST",
+            "/v1/auth/verify",
+            None,
+            json!({"email": email, "code": code}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        let (status, body) = call(&app, "GET", "/v1/auth/me", Some(&token), Value::Null).await;
+        assert_eq!(
+            (status, body["remaining_today"].as_i64()),
+            (StatusCode::OK, Some(1))
+        );
+        let (status, body) =
+            call(&app, "POST", "/v1/solve", Some(&token), solve_body.clone()).await;
+        assert_eq!(
+            (status, body["answers"][0]["choice_ids"][0].as_str()),
+            (StatusCode::OK, Some("b"))
+        );
+        let (status, body) =
+            call(&app, "POST", "/v1/solve", Some(&token), solve_body.clone()).await;
+        assert_eq!(
+            (status, body["code"].as_str()),
+            (StatusCode::TOO_MANY_REQUESTS, Some("QUOTA_EXCEEDED"))
+        );
+        let (_, body) = call(&app, "GET", "/v1/auth/me", Some(&token), Value::Null).await;
+        assert_eq!(body["remaining_today"], 0);
+
+        let (status, _) = call(&app, "POST", "/v1/auth/logout", Some(&token), Value::Null).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, body) = call(&app, "POST", "/v1/solve", Some(&token), solve_body).await;
+        assert_eq!(
+            (status, body["code"].as_str()),
+            (StatusCode::UNAUTHORIZED, Some("SESSION_EXPIRED"))
+        );
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn failed_solve_refunds_quota_and_email_login_needs_a_mailer() {
+        let auth = Auth::new(Store::memory(), Mailer::Disabled, 1, false);
+        let (user_id, _) = auth.store.upsert_user("a@b.vn").await.unwrap();
+        let token = "k12s_test-session";
+        auth.store
+            .create_session(&auth::session_hash(token), user_id, auth::now())
+            .await
+            .unwrap();
+        let app = router(
+            AppState::new(
+                "test-key".into(),
+                "test-model".into(),
+                "".into(),
+                "http://127.0.0.1:1/v1/responses".into(),
+            )
+            .with_auth(auth),
+        );
+        let solve_body = serde_json::to_value(input()).unwrap();
+        // OpenAI is unreachable both times, so the quota of one is never used up.
+        for _ in 0..2 {
+            let (status, body) =
+                call(&app, "POST", "/v1/solve", Some(token), solve_body.clone()).await;
+            assert_eq!(
+                (status, body["code"].as_str()),
+                (StatusCode::BAD_GATEWAY, Some("OPENAI_UNREACHABLE"))
+            );
+        }
+        let (status, body) = call(
+            &app,
+            "POST",
+            "/v1/auth/otp",
+            None,
+            json!({"email": "a@b.vn"}),
+        )
+        .await;
+        assert_eq!(
+            (status, body["code"].as_str()),
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Some("EMAIL_NOT_CONFIGURED")
+            )
+        );
+        let (_, health) = call(&app, "GET", "/health", None, Value::Null).await;
+        assert_eq!(
+            (health["ready"].as_bool(), health["email_login"].as_bool()),
+            (Some(false), Some(false))
+        );
     }
 }

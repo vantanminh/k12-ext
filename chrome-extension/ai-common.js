@@ -170,8 +170,8 @@
                         || (rule.exerciseMode === 'submit' && !completed)
                 };
             }
-            if (coursewareType === 'Courseware.PDF' || coursewareType === 'Courseware.Video') {
-                const label = coursewareType === 'Courseware.PDF' ? 'tài liệu' : 'video';
+            if (['Courseware.PDF', 'Courseware.Video', 'Courseware.Content'].includes(coursewareType)) {
+                const label = coursewareType === 'Courseware.Video' ? 'video' : 'tài liệu';
                 const shouldSkip = !rule.view || (completed && !rule.materialComment);
                 return {
                     item, coursewareType, completed,

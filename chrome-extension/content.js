@@ -964,7 +964,7 @@
         if (request.payload['options[coursewareType]'] === 'Courseware.Exercise') {
             return { ok: false, message: 'Bài tập cần đọc đề và nộp đáp án. Hãy dùng tính năng AI bài tập trong sidebar.' };
         }
-        if (request.kind !== 'video' && request.payload['options[coursewareType]'] !== 'Courseware.PDF') {
+        if (request.kind !== 'video' && !['Courseware.PDF', 'Courseware.Content'].includes(request.payload['options[coursewareType]'])) {
             return { ok: false, message: `Chưa hỗ trợ đánh dấu loại nội dung ${request.payload['options[coursewareType]'] || 'chưa xác định'}.` };
         }
         const completion = request.kind === 'video'

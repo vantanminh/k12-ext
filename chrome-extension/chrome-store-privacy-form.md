@@ -1,4 +1,4 @@
-# Chrome Web Store Privacy Form — 1.8.0
+# Chrome Web Store Privacy Form — 1.9.0
 
 Nội dung tham khảo cho biểu mẫu hiện hành khi phát hành. Chưa gửi duyệt Store.
 

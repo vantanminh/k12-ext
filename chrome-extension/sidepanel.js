@@ -934,7 +934,9 @@ async function runSelectedWorkflow() {
                 if (!list?.ok) throw new Error(list?.message || 'Không tìm thấy nội dung bài học.');
                 const outcome = await K12Workflow.run(list.candidates, { ...rule, skipCompleted: state.skipCompleted }, {
                     prepare: item => chrome.runtime.sendMessage({ action: 'prepareCandidateExercise', candidate: item }),
-                    complete: item => sendToTab(sourceTabId, { action: 'completeLessonFromSidebar', candidate: { ...item, subject: candidate.subject } }),
+                    complete: (item, options) => sendToTab(sourceTabId, { action: 'completeLessonFromSidebar', candidate: { ...item, subject: candidate.subject }, options }),
+                    readContent: item => sendToTab(sourceTabId, { action: 'readLessonContent', candidate: { ...item, subject: candidate.subject } }),
+                    commentContent: (item, exercise, result) => sendToTab(sourceTabId, { action: 'commentLessonContent', candidate: { ...item, subject: candidate.subject }, exercise, result }),
                     solve: solveExercise,
                     submit: async (opened, result) => {
                         const sent = await sendToTab(opened.tabId, { action: 'submitExercise', exercise: opened.exercise, result });

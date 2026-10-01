@@ -98,6 +98,44 @@
         return lines.map(line => line.replace(/,$/, '')).join('; ');
     }
 
+    const NO_QUESTIONS = 'KHÔNG CÓ CÂU HỎI';
+    const CONTENT_QUESTION_ID = 'content';
+
+    function contentHasQuestions(text) {
+        return /(^|\n)\s*Câu\s*\d+|(Anh|Em)\s*\/?\s*(chị\s*)?hãy|hãy\s+(viết|trả lời|nêu|phân tích|chỉ ra)|trả lời|điền\s+(từ|vào)|viết\s+(một\s+)?(đoạn|bài)\s+văn/i
+            .test(String(text || ''));
+    }
+
+    // A text or file lesson becomes one short_text question; the AI answers every
+    // question in it as one comment, so the server needs no new request shape.
+    function contentExercise({ title, text, pdfUrl: pdf }) {
+        const body = String(text || '').trim();
+        const prompt = [
+            'Đây là một bài học dạng văn bản/file trên K12. Học sinh phải làm toàn bộ câu hỏi và yêu cầu trong bài rồi gửi đáp án trong phần bình luận.',
+            'Hãy làm toàn bộ bài và ghi đáp án vào trường text:',
+            '- Trả lời theo đúng thứ tự, mỗi câu một dòng bắt đầu bằng "Câu N:" (giữ ý a, b nếu có). Không chép lại đề.',
+            '- Câu trắc nghiệm: ghi chữ cái đáp án đúng (nếu có) và nội dung lựa chọn.',
+            '- Câu điền khuyết: ghi (1) ..., (2) ... theo thứ tự chỗ trống.',
+            '- Câu tự luận, viết đoạn văn hoặc bài văn: viết hoàn chỉnh, đúng độ dài đề yêu cầu.',
+            `- Nếu bài không có câu hỏi hay yêu cầu nào cần trả lời, ghi đúng: ${NO_QUESTIONS}`,
+            pdf ? 'Nội dung bài nằm trong file PDF đính kèm.' : '',
+            body ? `Nội dung bài:\n${body}` : ''
+        ].filter(Boolean).join('\n');
+        // UTF-8 byte length, matching the server's 20000-byte prompt limit.
+        if (encodeURIComponent(prompt).replace(/%[0-9A-F]{2}/g, '_').length > 20000) throw new Error('Nội dung bài quá dài để gửi AI.');
+        const exercise = { title, questions: [{ id: CONTENT_QUESTION_ID, kind: 'short_text', prompt, choices: [] }] };
+        if (pdf) exercise.pdf_url = pdf;
+        return validateExercise(exercise);
+    }
+
+    function contentAnswer(exercise, result) {
+        validateAnswers(exercise, result);
+        const answer = result.answers[0];
+        if (answer.confidence < 0.7) throw new Error('AI chưa chắc chắn đáp án; cần xem lại trước khi bình luận.');
+        const text = String(answer.text || '').trim();
+        return text.toUpperCase().includes(NO_QUESTIONS) && text.length < 40 ? '' : text;
+    }
+
     function serverUrl(value) {
         const url = new URL(value || 'https://k12-ai-server-production.up.railway.app');
         const local = url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname);
@@ -172,6 +210,15 @@
             }
             if (['Courseware.PDF', 'Courseware.Video', 'Courseware.Content'].includes(coursewareType)) {
                 const label = coursewareType === 'Courseware.Video' ? 'video' : 'tài liệu';
+                const answers = rule.view && coursewareType !== 'Courseware.Video' && (rule.comment || rule.materialComment);
+                if (answers) {
+                    return {
+                        item, coursewareType, completed,
+                        action: 'Đọc bài; nếu có câu hỏi thì gọi AI làm bài và bình luận đáp án, nếu không thì đánh dấu đã xem',
+                        requiresCommentProfile: !hasCommentProfile,
+                        writesToK12: true
+                    };
+                }
                 const shouldSkip = !rule.view || (completed && !rule.materialComment);
                 return {
                     item, coursewareType, completed,
@@ -207,5 +254,5 @@
         return entry && (/^\/api\/LMS\//.test(entry.path)
             || (/^\/\d+\/$/.test(entry.path) && /^LMS\./.test(String(entry.request?.service || ''))));
     }
-    globalThis.K12AI = { plainText, validateExercise, validateAnswers, formatAnswerSummary, serverUrl, normalizeEmail, authHeaders, isFreeLessonListUrl, pdfUrl, imageUrl, subjectRule, workflowPreview, redact, recordableApiEntry };
+    globalThis.K12AI = { plainText, validateExercise, validateAnswers, formatAnswerSummary, contentHasQuestions, contentExercise, contentAnswer, serverUrl, normalizeEmail, authHeaders, isFreeLessonListUrl, pdfUrl, imageUrl, subjectRule, workflowPreview, redact, recordableApiEntry };
 })();

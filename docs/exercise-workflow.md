@@ -49,6 +49,8 @@ Adapter nộp xác minh đúng đề, đủ đáp án, mỗi confidence ít nh�
 
 Quy tắc môn: bỏ qua, nộp, bình luận đáp án, hoặc nộp và bình luận. Comment-only không nộp đáp án vào form. Hồ sơ đủ Tên/Lớp/Mã số được kiểm tra trước khi chạy môn có bình luận. Bình luận theo thứ tự hồ sơ rồi đáp án; đề Đúng/Sai nhóm theo câu và ý a–d.
 
+Bài dạng văn bản/file (`Courseware.Content`, `Courseware.PDF`) thường chứa câu hỏi mà học sinh trả lời trong phần Thảo luận (ví dụ Ngữ văn: trắc nghiệm, đề đọc hiểu, viết đoạn/bài văn). Khi môn bật bình luận, workflow đọc `.courseware-content-detail` (hoặc file PDF), gửi AI dưới dạng một câu `short_text`, đánh dấu đã xem không kèm "đã xem ạ", rồi bình luận đáp án. Bài AI báo `KHÔNG CÓ CÂU HỎI` đi theo luồng đánh dấu đã xem cũ. Bài đã 100% vẫn được làm nếu chưa có bình luận đáp án trong lịch sử cục bộ.
+
 Comment dùng API `Social/Comment/edit`. Lịch sử cục bộ ghi pending trước khi gửi, sent sau thành công để tránh bình luận trùng khi mất kết nối. Tài liệu PDF dùng `Courseware/markComplete` rồi đọc lại tiến độ; video dùng API hoàn tất video và kiểm tra phần trăm trong phản hồi. `Courseware.Exam` và nội dung chưa hỗ trợ không đi qua markComplete.
 
 ### Log chẩn đoán

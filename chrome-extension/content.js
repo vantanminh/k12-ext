@@ -684,10 +684,79 @@
             return { ok: false, message: `Thiếu dữ liệu: ${request.missingFields.join(', ')}` };
         }
 
-        return { ok: true, request };
+        return { ok: true, request, sourceDocument };
     }
 
-    async function completeLessonFromSidebar(candidate) {
+    // Keeps line breaks so the AI sees where each question and choice starts.
+    function lessonContentText(sourceDocument) {
+        const root = sourceDocument.querySelector('.courseware-content-detail')
+            || sourceDocument.querySelector('.courseware-detail');
+        if (!root) return '';
+        const copy = root.cloneNode(true);
+        for (const hidden of copy.querySelectorAll('script, style, noscript')) hidden.remove();
+        for (const table of copy.querySelectorAll('table')) {
+            const rows = Array.from(table.querySelectorAll('tr'), row =>
+                Array.from(row.querySelectorAll('th, td'), cell => cell.textContent.replace(/\s+/g, ' ').trim()).join(' | '));
+            table.replaceWith(sourceDocument.createTextNode(`\n${rows.join('\n')}\n`));
+        }
+        for (const br of copy.querySelectorAll('br')) br.replaceWith(sourceDocument.createTextNode('\n'));
+        for (const block of copy.querySelectorAll('p, div, li, h1, h2, h3, h4, h5, h6, tr')) {
+            block.after(sourceDocument.createTextNode('\n'));
+        }
+        return copy.textContent.split('\n').map(line => line.replace(/\s+/g, ' ').trim())
+            .filter(Boolean).join('\n');
+    }
+
+    function lessonPdfUrl(sourceDocument) {
+        const sources = Array.from(sourceDocument.querySelectorAll('iframe[src], embed[src], object[data], a[href]'),
+            element => element.getAttribute('src') || element.getAttribute('data') || element.getAttribute('href'));
+        sources.push(...(getInlineScriptSource(sourceDocument).match(/[^\s"'`()]+\.pdf\b/gi) || []));
+        for (const source of sources) {
+            try {
+                const url = new URL(source, 'https://static.k12online.vn/');
+                const candidates = [url.searchParams.get('file'), url.href].filter(Boolean);
+                for (const value of candidates) {
+                    try { return K12AI.pdfUrl(new URL(value, 'https://static.k12online.vn/').href); } catch (_) { /* next */ }
+                }
+            } catch (_) { /* next */ }
+        }
+        return '';
+    }
+
+    function answeredBefore(history, commentContext) {
+        const key = `${commentContext.lessonId}:${commentContext.objectType}:${commentContext.objectId}`;
+        return history.find(entry => entry.key === key && entry.kind === 'answer' && ['sent', 'pending'].includes(entry.state));
+    }
+
+    // Reads a text/file lesson so the side panel can ask the AI to do it.
+    async function readLessonContent(candidate) {
+        const prepared = await getCandidatePayload(candidate);
+        if (!prepared.ok) return prepared;
+        const { request, sourceDocument } = prepared;
+        const type = request.payload['options[coursewareType]'];
+        const { k12CommentHistory = [] } = await chrome.storage.local.get('k12CommentHistory');
+        const prior = answeredBefore(k12CommentHistory, request.commentContext);
+        if (prior?.state === 'sent') return { ok: true, answered: true };
+        if (prior) return { ok: false, message: 'Lần gửi bình luận đáp án trước chưa xác định kết quả; hãy kiểm tra phần Thảo luận trước khi gửi lại.' };
+        const text = lessonContentText(sourceDocument);
+        const pdfUrl = type === 'Courseware.PDF' ? lessonPdfUrl(sourceDocument) : '';
+        if (type === 'Courseware.PDF' && !pdfUrl && !K12AI.contentHasQuestions(text)) {
+            return { ok: true, noQuestions: true, message: 'Không đọc được file PDF của bài.' };
+        }
+        if (!pdfUrl && !K12AI.contentHasQuestions(text)) return { ok: true, noQuestions: true };
+        const title = sourceDocument.querySelector('.panel-heading .panel-title')?.textContent || candidate.title || '';
+        return { ok: true, exercise: K12AI.contentExercise({ title, text, pdfUrl }) };
+    }
+
+    async function commentLessonContent(candidate, exercise, result) {
+        const answer = K12AI.contentAnswer(exercise, result);
+        if (!answer) return { ok: true, commented: false, noQuestions: true };
+        const prepared = await getCandidatePayload(candidate);
+        if (!prepared.ok) return prepared;
+        return submitAutomaticComment(prepared.request.commentContext, answer, candidate.subject || '', { contentAnswer: true });
+    }
+
+    async function completeLessonFromSidebar(candidate, options = {}) {
         if (state.isRunning) {
             return { ok: false, message: 'Một yêu cầu khác đang chạy.' };
         }
@@ -699,6 +768,7 @@
                 return prepared;
             }
 
+            prepared.request.skipComment = options.skipComment === true;
             return await runCompletionWorkflow(prepared.request);
         } catch (error) {
             return { ok: false, message: error instanceof Error ? error.message : 'Không gửi được yêu cầu.' };
@@ -870,14 +940,16 @@
         }
     }
 
-    async function submitAutomaticComment(commentContext, answerSummary = '', subject = '') {
+    async function submitAutomaticComment(commentContext, answerSummary = '', subject = '', options = {}) {
         const settings = await chrome.storage.local.get({
             k12AutoCommentEnabled: false,
             k12AutoCommentProfile: { name: '', className: '', studentId: '' },
             k12SubjectRules: {}
         });
         const rule = K12AI.subjectRule(settings.k12SubjectRules?.[subject || pageSubject()], settings.k12AutoCommentEnabled);
-        if (!(answerSummary ? rule.comment : rule.materialComment)) {
+        const enabled = options.contentAnswer ? rule.comment || rule.materialComment
+            : answerSummary ? rule.comment : rule.materialComment;
+        if (!enabled) {
             return { ok: true, commented: false };
         }
 
@@ -914,6 +986,7 @@
         if (prior?.state === 'sent') return { ok: true, commented: true, duplicateSkipped: true, message: 'Bình luận này đã gửi trước đó.' };
         if (prior?.state === 'pending') return { ok: false, message: 'Lần gửi bình luận trước chưa xác định kết quả; hãy kiểm tra phần Thảo luận trước khi gửi lại.' };
         const entry = { key: historyKey, text: payload['fields[title]'], state: 'pending', time: new Date().toISOString() };
+        if (options.contentAnswer) entry.kind = 'answer';
         const history = [entry, ...k12CommentHistory].slice(0, 100);
         await chrome.storage.local.set({ k12CommentHistory: history });
         const response = await fetch(COMMENT_ENDPOINT, {
@@ -990,6 +1063,8 @@
         const completionMessage = request.kind === 'video'
             ? 'Video đã hoàn tất. status=SUCCESS, percent=100.'
             : 'Bài học đã được đánh dấu hoàn thành.';
+        // A lesson with questions gets the AI answer comment instead of "đã xem ạ".
+        if (request.skipComment) return { ok: true, completed: true, message: completionMessage };
         let comment;
         try {
             comment = await submitAutomaticComment(request.commentContext, '', request.subject);
@@ -1323,7 +1398,15 @@
             }
 
             if (message.action === 'completeLessonFromSidebar') {
-                completeLessonFromSidebar(message.candidate).then(sendResponse);
+                completeLessonFromSidebar(message.candidate, message.options).then(sendResponse);
+                return true;
+            }
+
+            if (message.action === 'readLessonContent' || message.action === 'commentLessonContent') {
+                (message.action === 'readLessonContent'
+                    ? readLessonContent(message.candidate)
+                    : commentLessonContent(message.candidate, message.exercise, message.result))
+                    .then(sendResponse, error => sendResponse({ ok: false, message: error.message }));
                 return true;
             }
 

@@ -18,7 +18,7 @@ test('workflow preview describes the K12 writes without making them', () => {
     ], { exerciseMode: 'both', view: true, materialComment: true });
 
     assert.equal(result.length, 3);
-    assert.match(result[0].action, /Đánh dấu tài liệu/);
+    assert.match(result[0].action, /gọi AI làm bài và bình luận đáp án/);
     assert.equal(result[0].writesToK12, true);
     assert.equal(result[1].completed, true);
     assert.match(result[2].action, /nộp đáp án và gửi bình luận/);

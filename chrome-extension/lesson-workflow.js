@@ -3,6 +3,9 @@
     const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
     const locked = opened => opened?.prerequisiteRequired || /chưa mở biểu mẫu/i.test(opened?.message || '');
     const complete = item => /^100\s*%?$/.test(String(item.progress || '').trim());
+    // Text and file lessons often hold questions whose answers go in a comment.
+    const answerable = (type, rule, api) => ['Courseware.Content', 'Courseware.PDF'].includes(type)
+        && (rule.comment || rule.materialComment) && typeof api.readContent === 'function';
     async function run(items, rule, api) {
         const records = [];
         const materials = [];
@@ -21,7 +24,7 @@
             let submitted = false;
             try {
                 let type = item.coursewareType;
-                if (rule.skipCompleted && complete(item)) {
+                if (rule.skipCompleted && complete(item) && !(rule.view && answerable(type, rule, api))) {
                     if (materialTypes.has(type)) materials.push(item);
                     records.push({ item, skipped: true, completed: true, message: 'Đã 100%, bỏ qua.' });
                     continue;
@@ -49,6 +52,26 @@
                     if (!rule.view) {
                         records.push({ item, skipped: true, completed: complete(item), message: 'Bỏ qua tài liệu/video theo cấu hình môn.' });
                         continue;
+                    }
+                    if (answerable(type, rule, api)) {
+                        const read = await api.readContent(item);
+                        if (!read?.ok) throw Error(read?.message || 'Không đọc được nội dung bài học.');
+                        if (read.answered) {
+                            records.push({ item, skipped: true, completed: complete(item), commented: true, message: 'Đã gửi bình luận đáp án trước đó, bỏ qua.' });
+                            continue;
+                        }
+                        const result = read.exercise ? await api.solve(read.exercise) : null;
+                        const answer = result ? globalThis.K12AI.contentAnswer(read.exercise, result) : '';
+                        if (answer) {
+                            if (!complete(item)) {
+                                const done = await api.complete(item, { skipComment: true });
+                                if (!done?.ok || !done.completed) throw Error(done?.message || 'Chưa xác minh được tiến độ tài liệu.');
+                            }
+                            const comment = await api.commentContent(item, read.exercise, result);
+                            if (!comment?.ok || !comment.commented) throw Error(comment?.message || 'Bình luận đáp án chưa được gửi.');
+                            records.push({ item, completed: true, commented: true, message: 'Đã làm bài bằng AI và gửi bình luận đáp án.' });
+                            continue;
+                        }
                     }
                     if (complete(item) && !rule.materialComment) {
                         records.push({ item, skipped: true, completed: true, message: 'K12 đã ghi nhận 100%.' });

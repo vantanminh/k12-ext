@@ -981,14 +981,16 @@ async function verifyAllComments() {
     const missing = [];
     const errors = [];
     let checked = 0;
-    try {
-        for (const [index, candidate] of lessons.entries()) {
-            elements.verifyResult.className = 'bulk-status';
-            elements.verifyResult.textContent = `Kiểm tra bình luận ${index + 1}/${lessons.length}: ${candidate.title}`;
+    let done = 0;
+    let next = 0;
+    elements.verifyResult.className = 'bulk-status';
+    async function worker() {
+        while (next < lessons.length) {
+            const candidate = lessons[next++];
             const rule = subjectRule(candidate.subject || '');
             const wanted = { exercise: ['comment', 'both'].includes(rule.exerciseMode), material: Boolean(rule.materialComment || rule.comment) };
             try {
-                const outcome = await chrome.runtime.sendMessage({ action: 'verifyLessonComments', candidate, tabId: state.tabId, profile, wanted });
+                const outcome = await sendToTab(state.tabId, { action: 'verifyLessonComments', candidate, profile, wanted });
                 if (!outcome?.ok) throw new Error(outcome?.message || 'Không đọc được bài.');
                 for (const item of outcome.items) {
                     if (item.found === true) checked++;
@@ -996,7 +998,11 @@ async function verifyAllComments() {
                     else errors.push(`${candidate.title} › ${item.title}: ${item.message}`);
                 }
             } catch (error) { errors.push(`${candidate.title}: ${error.message}`); }
+            elements.verifyResult.textContent = `Đã kiểm tra ${++done}/${lessons.length} bài...`;
         }
+    }
+    try {
+        await Promise.all(Array.from({ length: Math.min(6, lessons.length) }, worker));
     } finally { state.processing = false; elements.verifyComments.disabled = false; renderLessons(); }
     const lines = [`Đã kiểm tra ${checked} nội dung của ${lessons.length} bài.`];
     lines.push(missing.length ? `Chưa thấy bình luận (${missing.length}):\n${missing.join('\n')}` : 'Không thiếu bình luận nào.');

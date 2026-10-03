@@ -8,6 +8,7 @@
     const LESSON_LAUNCH_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Learning/Lesson/learn';
     const MARK_COMPLETE_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Learning/Courseware/markComplete';
     const COMMENT_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Social/Comment/edit';
+    const COMMENT_LIST_ENDPOINT = 'https://hcm.k12online.vn/api/LMS/Social/Comment/selectAll';
     const GUARD_INTERVAL_MS = 2000;
 
     const state = {
@@ -748,21 +749,81 @@
         return { ok: true, exercise: K12AI.contentExercise({ title, text, pdfUrl }) };
     }
 
-    // Comments load after the page does, so poll briefly for one that carries the
-    // user's student ID and class before declaring it missing.
-    async function findProfileComment(profile) {
+    async function fetchK12Document(url) {
+        const response = await fetch(url, { credentials: 'include', headers: { Accept: 'text/html,*/*' } });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (new URL(response.url || url).origin !== location.origin) throw new Error('Phiên đăng nhập có thể đã hết hạn.');
+        return new DOMParser().parseFromString(await response.text(), 'text/html');
+    }
+
+    // Lists the lesson's contents from its page, then asks K12 for each content's
+    // comments and looks for one carrying the user's class and student ID.
+    async function verifyLessonComments(candidate, profile, wanted) {
         const studentId = String(profile?.studentId || '').trim().toLowerCase();
         const className = String(profile?.className || '').trim().toLowerCase();
         if (!studentId || !className) return { ok: false, message: 'Thiếu Lớp hoặc Mã số.' };
-        const hasComment = () => {
-            const text = (document.body?.innerText || '').toLowerCase();
-            return text.split('\n').some(line => line.includes(studentId) && line.includes(className));
-        };
-        for (let attempt = 0; attempt < 12; attempt += 1) {
-            if (hasComment()) return { ok: true, found: true };
-            await new Promise(resolve => setTimeout(resolve, 500));
+        let href = candidate.href;
+        if (candidate.requiresLessonLink) {
+            const resolved = await resolveLessonPageUrl(candidate);
+            if (!resolved.ok) return resolved;
+            href = resolved.href;
         }
-        return { ok: true, found: false };
+        const lessonPage = await fetchK12Document(href);
+        const lessonUrl = new URL(href, location.href);
+        const site = lessonUrl.searchParams.get('site') || candidate.site || lessonUrl.searchParams.get('courseSiteId') || '';
+        const courseSiteId = lessonUrl.searchParams.get('courseSiteId') || candidate.courseSiteId || site;
+        const contents = new Map();
+        for (const node of lessonPage.querySelectorAll('[data-item-id][data-type^="Courseware."]')) {
+            const id = (node.getAttribute('data-item-id') || '').replace(/[^a-f0-9]/gi, '');
+            if (/^[a-f0-9]{24}$/i.test(id) && !contents.has(id)) {
+                contents.set(id, { id, type: node.getAttribute('data-type'), title: (node.getAttribute('data-tooltip') || node.getAttribute('title') || id).trim() });
+            }
+        }
+        if (!contents.size && candidate.coursewareId) {
+            contents.set(candidate.coursewareId, { id: candidate.coursewareId, type: candidate.coursewareType, title: candidate.title });
+        }
+        if (!contents.size) return { ok: false, message: 'Không tìm thấy nội dung trong bài học.' };
+        const targets = Array.from(contents.values())
+            .filter(item => wanted[item.type === 'Courseware.Exercise' ? 'exercise' : 'material']);
+        const securityToken = findNamedValue('securityToken', getInlineScriptSource(lessonPage))
+            || findNamedValue('securityToken', getInlineScriptSource()) || '';
+        // A comment title is "Tên - Lớp - Mã số - ...".
+        const mine = title => {
+            const parts = String(title || '').toLowerCase().split(' - ').map(part => part.trim());
+            return parts.some((part, index) => part === className && parts[index + 1] === studentId);
+        };
+        const items = await Promise.all(targets.map(async item => {
+            try {
+                return { title: item.title, found: (await selectComments(item.id, site || courseSiteId, securityToken)).some(c => mine(c.title)) };
+            } catch (error) {
+                return { title: item.title, found: null, message: error.message };
+            }
+        }));
+        return { ok: true, items };
+    }
+
+    // Social/Comment/selectAll lists the comments of one courseware; page until
+    // totalItems is reached or K12 stops returning new comments.
+    async function selectComments(objectId, site, securityToken) {
+        const comments = new Map();
+        for (let pageNo = 1; pageNo <= 50; pageNo += 1) {
+            const response = await fetch(COMMENT_LIST_ENDPOINT, {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    Accept: 'application/json, */*',
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: createRequestBody({ 'filters[objectId]': objectId, itemsPerPage: 200, pageNo, site, securityToken }).toString()
+            });
+            const { rawText, data } = await parseResponse(response);
+            if (!response.ok || !data || !Array.isArray(data.items)) throw new Error(getErrorMessage(response, data, rawText));
+            const before = comments.size;
+            data.items.forEach(comment => comments.set(comment._id || comment.title, comment));
+            if (comments.size === before || comments.size >= Number(data.totalItems || 0)) break;
+        }
+        return Array.from(comments.values());
     }
 
     async function commentLessonContent(candidate, exercise, result) {
@@ -1419,8 +1480,8 @@
                 return true;
             }
 
-            if (message.action === 'findProfileComment') {
-                findProfileComment(message.profile).then(sendResponse, error => sendResponse({ ok: false, message: error.message }));
+            if (message.action === 'verifyLessonComments') {
+                verifyLessonComments(message.candidate, message.profile, message.wanted).then(sendResponse, error => sendResponse({ ok: false, message: error.message }));
                 return true;
             }
 

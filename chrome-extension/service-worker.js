@@ -129,29 +129,6 @@ async function releaseExerciseTab(tabId) {
     await chrome.tabs.remove(tabId).catch(() => {});
 }
 
-// Opens one content page in the background and looks for the user's own comment.
-async function checkContentComment(item, profile) {
-    const tab = await chrome.tabs.create({ url: coursewareUrl(item.href).href, active: false });
-    try { return await readyTab(tab.id, 'findProfileComment', { profile }); }
-    finally { await chrome.tabs.remove(tab.id).catch(() => {}); }
-}
-
-async function verifyLessonComments(candidate, sourceTabId, profile, wanted) {
-    const list = await candidateExercises(candidate, sourceTabId);
-    const items = [];
-    for (const item of list.candidates) {
-        if (!wanted[item.coursewareType === 'Courseware.Exercise' || !item.coursewareType ? 'exercise' : 'material']) continue;
-        let found = null;
-        let message = '';
-        try {
-            const result = await checkContentComment(item, profile);
-            if (result?.ok) found = result.found; else message = result?.message || 'Không đọc được bình luận.';
-        } catch (error) { message = error.message; }
-        items.push({ title: item.title || item.coursewareId, found, message });
-    }
-    return { ok: true, items };
-}
-
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
     const extensionPage = sender.id === chrome.runtime.id && sender.url?.startsWith(chrome.runtime.getURL(''));
     const k12Page = sender.tab?.url?.startsWith(k12Origin + '/');
@@ -172,11 +149,6 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
         const task = message.action === 'getCandidateExercises' ? candidateExercises(message.candidate, message.tabId)
             : message.action === 'prepareCandidateExercise' ? prepareCandidate(message.candidate) : releaseExerciseTab(message.tabId);
         task.then(result => reply(result || { ok: true }), error => reply({ ok: false, message: error.message }));
-        return true;
-    }
-    if (message.action === 'verifyLessonComments') {
-        verifyLessonComments(message.candidate, message.tabId, message.profile, message.wanted)
-            .then(reply, error => reply({ ok: false, message: error.message }));
         return true;
     }
     if (message.action === 'discoverAllLessons') {

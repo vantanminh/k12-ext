@@ -748,6 +748,23 @@
         return { ok: true, exercise: K12AI.contentExercise({ title, text, pdfUrl }) };
     }
 
+    // Comments load after the page does, so poll briefly for one that carries the
+    // user's student ID and class before declaring it missing.
+    async function findProfileComment(profile) {
+        const studentId = String(profile?.studentId || '').trim().toLowerCase();
+        const className = String(profile?.className || '').trim().toLowerCase();
+        if (!studentId || !className) return { ok: false, message: 'Thiếu Lớp hoặc Mã số.' };
+        const hasComment = () => {
+            const text = (document.body?.innerText || '').toLowerCase();
+            return text.split('\n').some(line => line.includes(studentId) && line.includes(className));
+        };
+        for (let attempt = 0; attempt < 12; attempt += 1) {
+            if (hasComment()) return { ok: true, found: true };
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        return { ok: true, found: false };
+    }
+
     async function commentLessonContent(candidate, exercise, result) {
         const answer = K12AI.contentAnswer(exercise, result);
         if (!answer) return { ok: true, commented: false, noQuestions: true };
@@ -1399,6 +1416,11 @@
 
             if (message.action === 'completeLessonFromSidebar') {
                 completeLessonFromSidebar(message.candidate, message.options).then(sendResponse);
+                return true;
+            }
+
+            if (message.action === 'findProfileComment') {
+                findProfileComment(message.profile).then(sendResponse, error => sendResponse({ ok: false, message: error.message }));
                 return true;
             }
 

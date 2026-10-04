@@ -242,7 +242,7 @@ async function refreshLessons() {
         }
 
         elements.pageContext.textContent = tab.title || 'hcm.k12online.vn';
-        const scanAll = K12AI.isFreeLessonListUrl(tab.url);
+        const scanAll = K12AI.isLessonListUrl(tab.url);
         if (scanAll) elements.scanStatus.textContent = 'Đang quét tất cả trang của danh sách bài học...';
         const response = scanAll
             ? await chrome.runtime.sendMessage({ action: 'discoverAllLessons', tabId: tab.id })

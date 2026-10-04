@@ -535,6 +535,21 @@
         return Array.from(lessons.values());
     }
 
+    // Trang chủ and Học thi trực tuyến link to both lesson lists. Học tập stays
+    // on Student/list; Bài giảng tự do stays on Student/teacherList.
+    function collectLessonListUrls() {
+        const urls = new Set();
+        const add = (value) => {
+            try {
+                const url = new URL(value, location.href);
+                if (K12AI.lessonListSection(url.href)) urls.add(url.href);
+            } catch (_) {}
+        };
+        add(location.href);
+        for (const link of document.querySelectorAll('a[href]')) add(link.getAttribute('href'));
+        return Array.from(urls);
+    }
+
     function listPagination() {
         const root = document.querySelector('#module3') || document.querySelector('#listingModule3');
         const text = root?.textContent || '';
@@ -1404,23 +1419,7 @@
                 return true;
             }
             if (message.action === 'getLessonListUrls') {
-                const urls = new Set();
-                if (/\/LMS\/Lesson\/Student\/teacherList$/i.test(location.pathname)) {
-                    sendResponse({ ok: true, urls: [location.href] });
-                    return false;
-                }
-                for (const link of document.querySelectorAll('a[href]')) {
-                    try {
-                        const url = new URL(link.getAttribute('href'), location.href);
-                        if (url.origin !== location.origin || !/\/LMS\/Lesson\/Student\/(list|teacherList)$/i.test(url.pathname)) continue;
-                        // The free-learning route was verified in the live browser.
-                        if (/\/Student\/list$/i.test(url.pathname)) {
-                            url.pathname = url.pathname.replace(/\/list$/i, '/teacherList');
-                        }
-                        urls.add(url.href);
-                    } catch (_) {}
-                }
-                sendResponse({ ok: true, urls: Array.from(urls) });
+                sendResponse({ ok: true, urls: collectLessonListUrls() });
                 return false;
             }
             if (message.action === 'advanceLessonPage') {
@@ -1460,7 +1459,7 @@
             if (message.action === 'getLessonCandidates') {
                 const lessons = getLessonCandidates();
                 const pagination = listPagination();
-                const listing = /\/LMS\/Lesson\/Student\/(list|teacherList)$/i.test(location.pathname);
+                const listing = K12AI.isLessonListUrl(location.href);
                 const root = document.querySelector('#module3') || document.querySelector('#listingModule3');
                 const nextReady = pagination.pages < 2 || Array.from(root?.querySelectorAll('a') || []).some(a => a.textContent.trim() === '2');
                 sendResponse({

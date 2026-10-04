@@ -32,19 +32,34 @@ async function discoverLessons(tabId) {
     scanning = true;
     let scanTab;
     try {
+        const sourceTab = await chrome.tabs.get(tabId);
         const links = await chrome.tabs.sendMessage(tabId, { action: 'getLessonListUrls' });
-        if (!links?.urls?.length) throw new Error('Không tìm thấy liên kết Bài giảng trên trang K12 hiện tại.');
         const lessons = new Map();
         const errors = [];
-        for (const href of links.urls) {
+        let sourceIsK12 = false;
+        try { sourceIsK12 = new URL(sourceTab.url).origin === k12Origin; } catch (_) {}
+        // Trang chủ and the Học thi trực tuyến module show lesson cards without
+        // being a list themselves. A list page is scanned with pagination below.
+        if (sourceIsK12 && !K12AI.lessonListSection(sourceTab.url)) {
+            try {
+                const home = await chrome.tabs.sendMessage(tabId, { action: 'getLessonCandidates' });
+                (home?.lessons || []).forEach(c => lessons.set(c.key, c));
+            } catch (_) {}
+        }
+        if (!links?.urls?.length && lessons.size === 0) throw new Error('Không tìm thấy liên kết Bài giảng trên trang K12 hiện tại.');
+        for (const href of links?.urls || []) {
             const url = new URL(href);
-            if (url.origin !== k12Origin || !/\/LMS\/Lesson\/Student\/(list|teacherList)$/i.test(url.pathname)) continue;
+            const section = K12AI.lessonListSection(url.href);
+            if (!section) continue;
+            const sectionName = section === 'free' ? 'Bài giảng tự do' : 'Học tập';
             if (!scanTab) scanTab = await chrome.tabs.create({ url: url.href, active: false });
             else await chrome.tabs.update(scanTab.id, { url: url.href });
             try {
                 let data = await readyTab(scanTab.id, 'getLessonCandidates', {}, url.href);
                 if (!data?.ok) throw new Error(data?.message || 'Không đọc được danh sách.');
-                (data.lessons || []).forEach(c => lessons.set(c.key, c));
+                const readIds = new Set();
+                const take = (list) => (list || []).forEach(c => { lessons.set(c.key, c); readIds.add(c.key); });
+                take(data.lessons);
                 const expectedPages = data.pagination?.pages || 0;
                 for (let page = 2; page <= (expectedPages || 200); page += 1) {
                     const next = await chrome.tabs.sendMessage(scanTab.id, { action: 'advanceLessonPage', page });
@@ -53,11 +68,11 @@ async function discoverLessons(tabId) {
                         if (expectedPages >= page) throw new Error(`K12 báo ${expectedPages} trang nhưng chưa mở được trang ${page}.`);
                         break;
                     }
-                    (next.lessons || []).forEach(c => lessons.set(c.key, c));
+                    take(next.lessons);
                     if (page === 200) throw new Error('Danh sách vượt quá giới hạn 200 trang.');
                 }
-                if (data.pagination?.total && lessons.size < data.pagination.total) throw new Error(`K12 có ${data.pagination.total} bài nhưng mới đọc được ${lessons.size} bài.`);
-            } catch (error) { errors.push(error.message); }
+                if (data.pagination?.total && readIds.size < data.pagination.total) throw new Error(`K12 có ${data.pagination.total} bài nhưng mới đọc được ${readIds.size} bài.`);
+            } catch (error) { errors.push(`${sectionName}: ${error.message}`); }
         }
         return { ok: errors.length === 0, lessons: Array.from(lessons.values()),
             message: `${lessons.size} bài học tìm thấy từ các danh sách K12.${errors.length ? ' Quét chưa đầy đủ: ' + errors.join(' ') : ''}` };

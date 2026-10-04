@@ -90,6 +90,12 @@ test('opening the free-learning homepage automatically discovers every lesson pa
     assert.match(panel.elements.get('scan-status').textContent, /48 bài học/);
 });
 
+test('opening the study list also discovers every lesson page', async () => {
+    const panel = createPanel('https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/list?site=2003644');
+    await panel.ready();
+    assert.deepEqual(panel.messages.map(message => message.action), ['discoverAllLessons']);
+});
+
 test('opening a courseware page reads only its current lesson', async () => {
     const panel = createPanel('https://hcm.k12online.vn/79000729/page/LMS/Lesson/Courseware/learn/lesson-1');
     await panel.ready();

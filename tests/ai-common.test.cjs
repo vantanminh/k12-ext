@@ -44,12 +44,29 @@ test('server target accepts localhost HTTP or HTTPS deployment without URL crede
         assert.throws(() => ai.serverUrl(url));
     }
 });
-test('only the K12 free-learning home triggers whole-list discovery', () => {
-    assert.equal(ai.isFreeLessonListUrl('https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/teacherList?site=2003644'), true);
-    assert.equal(ai.isFreeLessonListUrl('https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/teacherList/?site=2003644'), true);
-    assert.equal(ai.isFreeLessonListUrl('https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/list?site=2003644'), false);
-    assert.equal(ai.isFreeLessonListUrl('https://evil.test/79000729/page/LMS/Lesson/Student/teacherList'), false);
-    assert.equal(ai.isFreeLessonListUrl('not a URL'), false);
+test('study and free-learning lists are scanned, and only free learning is the free section', () => {
+    const study = 'https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/list?site=2003644';
+    const free = 'https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/teacherList?site=2003644';
+    assert.equal(ai.lessonListSection(study), 'study');
+    assert.equal(ai.lessonListSection(free), 'free');
+    assert.equal(ai.lessonListSection('https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/teacherList/?site=2003644'), 'free');
+    assert.equal(ai.isLessonListUrl(study), true);
+    assert.equal(ai.isLessonListUrl(free), true);
+    assert.equal(ai.isFreeLessonListUrl(free), true);
+    assert.equal(ai.isFreeLessonListUrl(study), false);
+    assert.equal(ai.isLessonListUrl('https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/listExercise/6ab7e04a1d5332cbc90330b7'), false);
+    assert.equal(ai.isLessonListUrl('https://hcm.k12online.vn/79000729/'), false);
+    assert.equal(ai.isLessonListUrl('https://evil.test/79000729/page/LMS/Lesson/Student/teacherList'), false);
+    assert.equal(ai.isLessonListUrl('not a URL'), false);
+});
+test('an illustrated choice question keeps the image when its id is the question id', () => {
+    const id = '6ab7e04a1d5332cbc90330ba';
+    const item = { title: 'Toán', questions: [{ id, kind: 'single_choice', prompt: 'Hình bên', choices: [
+        { id: '1', text: '1' }, { id: '2', text: '2' }
+    ] }], images: [{ id, url: '/upload/2003644/fck/7900991288/image.png' }] };
+    const normalized = ai.validateExercise(item);
+    assert.equal(normalized.images[0].id, id);
+    assert.throws(() => ai.validateExercise({ ...item, images: [{ id: '6ab7e04a1d5332cbc90330bb', url: item.images[0].url }] }), /không gắn/);
 });
 test('image references are restricted to K12 uploads and answer summaries use native labels', () => {
     const id = '6ab7e0713409d4fad702dc8c';

@@ -33,6 +33,9 @@
                 if (!/^[a-f0-9]{24}$/i.test(id)) throw new Error('Mã câu hỏi có hình không hợp lệ.');
                 return { id, url: imageUrl(image.url) };
             });
+            if (result.images.some(image => !questions.some(q => q.id === image.id || q.id.startsWith(`${image.id}:`)))) {
+                throw new Error('Hình minh họa không gắn với câu hỏi K12.');
+            }
         }
         return result;
     }
@@ -183,14 +186,26 @@
         return headers;
     }
 
-    function isFreeLessonListUrl(value) {
+    // Học tập is Student/list. Bài giảng tự do is Student/teacherList.
+    // listExercise and other routes must not match.
+    function lessonListSection(value) {
         try {
             const url = new URL(value);
-            return url.origin === 'https://hcm.k12online.vn'
-                && /^\/\d+\/page\/LMS\/Lesson\/Student\/teacherList\/?$/i.test(url.pathname);
+            if (url.origin !== 'https://hcm.k12online.vn') return '';
+            const match = url.pathname.match(/^\/\d+\/page\/LMS\/Lesson\/Student\/(list|teacherList)\/?$/i);
+            if (!match) return '';
+            return /teacherList/i.test(match[1]) ? 'free' : 'study';
         } catch (_) {
-            return false;
+            return '';
         }
+    }
+
+    function isLessonListUrl(value) {
+        return lessonListSection(value) !== '';
+    }
+
+    function isFreeLessonListUrl(value) {
+        return lessonListSection(value) === 'free';
     }
 
     function subjectRule(saved, defaultComment = false) {
@@ -268,5 +283,5 @@
         return entry && (/^\/api\/LMS\//.test(entry.path)
             || (/^\/\d+\/$/.test(entry.path) && /^LMS\./.test(String(entry.request?.service || ''))));
     }
-    globalThis.K12AI = { plainText, validateExercise, validateAnswers, uncertainSummary, formatAnswerSummary, contentHasQuestions, contentExercise, contentAnswer, serverUrl, normalizeEmail, authHeaders, isFreeLessonListUrl, pdfUrl, imageUrl, subjectRule, workflowPreview, redact, recordableApiEntry };
+    globalThis.K12AI = { plainText, validateExercise, validateAnswers, uncertainSummary, formatAnswerSummary, contentHasQuestions, contentExercise, contentAnswer, serverUrl, normalizeEmail, authHeaders, lessonListSection, isLessonListUrl, isFreeLessonListUrl, pdfUrl, imageUrl, subjectRule, workflowPreview, redact, recordableApiEntry };
 })();

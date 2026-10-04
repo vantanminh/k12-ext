@@ -85,6 +85,79 @@ test('unhydrated listing reads native table cells before column indexes are assi
     assert.equal(result.subject, 'Hóa học');
     assert.equal(scope.candidates().length, 1);
 });
+test('the study list is scanned as Học tập and is not rewritten to free learning', async () => {
+    const listUrl = 'https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/list?site=2003644';
+    const h = harness({ listUrl });
+    const result = await h.scope.scan(1);
+    assert.equal(result.ok, true, result.message);
+    assert.equal(h.created[0].url, listUrl);
+    assert.deepEqual(Array.from(result.lessons, c => c.key), ['a', 'b', 'c']);
+});
+
+test('home keeps lesson cards and opens both Học tập and Bài giảng tự do', async () => {
+    const home = 'https://hcm.k12online.vn/79000729/';
+    const study = 'https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/list?site=2003644';
+    const free = 'https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/teacherList?site=2003644';
+    const h = harness({ listUrl: home });
+    const opened = [];
+    h.scope.chrome.tabs.create = async options => { opened.push(options.url); return { id: 2 }; };
+    h.scope.chrome.tabs.update = async (_id, options) => { opened.push(options.url); };
+    h.scope.chrome.tabs.get = async () => ({ status: 'complete', url: opened.at(-1) || home });
+    h.scope.chrome.tabs.sendMessage = async (id, message) => {
+        if (message.action === 'getLessonListUrls') return { urls: [study, free] };
+        if (message.action === 'getLessonCandidates' && id === 1) return { ok: true, lessons: [{ key: 'card' }] };
+        if (message.action === 'getLessonCandidates') {
+            const key = opened.at(-1) === study ? 'study' : 'free';
+            return { ok: true, lessons: [{ key }], pagination: { pages: 1, total: 1 } };
+        }
+        return { ok: true, advanced: false };
+    };
+    const result = await h.scope.scan(1);
+    assert.equal(result.ok, true, result.message);
+    assert.deepEqual(opened, [study, free]);
+    assert.deepEqual(Array.from(result.lessons, c => c.key).sort(), ['card', 'free', 'study']);
+});
+
+test('home links to Học tập and Bài giảng tự do are kept as separate lists', () => {
+    const { parseHTML } = require('linkedom');
+    const home = 'https://hcm.k12online.vn/79000729/';
+    const { document } = parseHTML(`<html><body>
+        <a href="/79000729/">Trang chủ</a>
+        <a href="/79000729/page/LMS/Lesson/Student/list?site=2003644">Học tập</a>
+        <a href="/79000729/page/LMS/Lesson/Student/teacherList?site=2003644">Bài giảng tự do</a>
+        <a href="/79000729/page/LMS/Lesson/Student/listExercise/6ab7e04a1d5332cbc90330b7">Bài tập</a>
+        <a href="https://evil.test/79000729/page/LMS/Lesson/Student/list">Ngoài</a>
+    </body></html>`);
+    const script = readFileSync(join(__dirname, '../chrome-extension/content.js'), 'utf8')
+        .replace(/    if \(document\.readyState === 'loading'\) \{[\s\S]*?\n\}\)\(\);\s*$/, '    globalThis.collectLessonListUrls = collectLessonListUrls;\n})();');
+    const scope = { document, URL, URLSearchParams, location: new URL(home) };
+    vm.createContext(scope);
+    vm.runInContext(common, scope);
+    vm.runInContext(script, scope);
+    const paths = Array.from(scope.collectLessonListUrls(), href => new URL(href).pathname).sort();
+    assert.deepEqual(paths, [
+        '/79000729/page/LMS/Lesson/Student/list',
+        '/79000729/page/LMS/Lesson/Student/teacherList'
+    ]);
+});
+
+test('the Học tập page scans itself instead of switching to free learning', () => {
+    const { parseHTML } = require('linkedom');
+    const study = 'https://hcm.k12online.vn/79000729/page/LMS/Lesson/Student/list?site=2003644';
+    const { document } = parseHTML('<html><body><a href="/79000729/page/LMS/Lesson/Student/teacherList?site=2003644">Bài giảng tự do</a></body></html>');
+    const script = readFileSync(join(__dirname, '../chrome-extension/content.js'), 'utf8')
+        .replace(/    if \(document\.readyState === 'loading'\) \{[\s\S]*?\n\}\)\(\);\s*$/, '    globalThis.collectLessonListUrls = collectLessonListUrls;\n})();');
+    const scope = { document, URL, URLSearchParams, location: new URL(study) };
+    vm.createContext(scope);
+    vm.runInContext(common, scope);
+    vm.runInContext(script, scope);
+    const paths = Array.from(scope.collectLessonListUrls(), href => new URL(href).pathname).sort();
+    assert.deepEqual(paths, [
+        '/79000729/page/LMS/Lesson/Student/list',
+        '/79000729/page/LMS/Lesson/Student/teacherList'
+    ]);
+});
+
 test('unrelated URLs do not cause background navigation', async () => {
     const h = harness({ listUrl: 'https://example.com/79000729/page/LMS/Lesson/Student/teacherList' });
     const result = await h.scope.scan(1);

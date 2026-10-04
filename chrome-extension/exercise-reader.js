@@ -8,7 +8,16 @@
         const form = document.querySelector('.question-purify-item[data-type="Choice"]')?.closest('form');
         if (!form) return null;
         const groups = Array.from(form.querySelectorAll('li[id^="question"]'));
-        return groups.length && groups.every(group => group.dataset.elementType === 'Choice') ? form : null;
+        if (!groups.length) return null;
+        // Ignore a form that also contains another question type. Missing
+        // element types mean K12 has not finished rendering the choice items.
+        if (groups.some(group => group.dataset.elementType && group.dataset.elementType !== 'Choice')) return null;
+        return form;
+    }
+
+    function choiceLabel(radio) {
+        const label = radio.closest('label') || radio.parentElement?.querySelector('label') || radio.parentElement;
+        return elementText(label?.querySelector('.choices-text, .choice-text') || label);
     }
 
     function collectImages(group, id, images) {
@@ -38,7 +47,7 @@
             const prompt = elementText(group.querySelector(`#title${id}`) || group.querySelector('.choice-top'));
             collectImages(group, id, images);
             return { id, kind: 'single_choice', prompt: `Câu ${index + 1}. ${prompt}`,
-                choices: radios.map(r => ({ id: r.value, text: elementText(r.parentElement.querySelector('label')) })) };
+                choices: radios.map(r => ({ id: r.value, text: choiceLabel(r) })) };
         });
         return K12AI.validateExercise({ title: document.querySelector('#module2 .panel-heading .panel-title')?.textContent || document.title,
             questions, images });
@@ -203,6 +212,7 @@
         if (choiceForm()) {
             const deadline = Date.now() + 20000;
             while (Date.now() < deadline && !choiceReady()) await pause(250);
+            if (!choiceReady()) throw new Error('K12 chưa tải đủ câu trắc nghiệm. Hãy tải lại bài rồi thử tiếp.');
         }
         if (document.querySelector('.doExercise-pdf form')) {
             const deadline = Date.now() + 20000;

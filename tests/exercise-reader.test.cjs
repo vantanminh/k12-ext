@@ -33,6 +33,31 @@ function trueFalseFixture() {
     return `<div id="module2"><div class="panel-heading"><div class="panel-title">CARBOHYDRATE</div><a>Thảo luận</a><style>.style-must-not-be-the-title { color: red; }</style></div></div><form id="form2"><input type="hidden" name="options[coursewareType]" value="Courseware.Exercise"><input type="hidden" name="options[coursewareId]" value="6ab7e0713409d4fad702dc8b"><input type="hidden" name="id" value="6abbeb627686e80b58f6cae2"><input type="hidden" name="securityToken" value="fixture-token"><input type="hidden" name="submitFormId" value="2"><ul>${rows}</ul></form>`;
 }
 
+test('reads a choice exercise whose answers sit inside the label and keeps its image', async () => {
+    const id = '6ab7e04a1d5332cbc90330ba';
+    const html = `<div id="module2"><div class="panel-heading"><div class="panel-title">Câu trắc nghiệm</div></div>
+        <form><input type="hidden" name="options[coursewareType]" value="Courseware.Exercise"><input type="hidden" name="options[coursewareId]" value="${id}"><input type="hidden" name="id" value="6abbeb627686e80b58f6cae2"><input type="hidden" name="securityToken" value="fixture-token">
+        <ul><li id="question${id}" data-element-type="Choice"><div class="question-purify-item" data-type="Choice">
+            <div class="choice-top" id="title${id}">1 + 1 bằng mấy? <img src="/upload/2003644/fck/7900991288/image.png"></div>
+            <label><input type="radio" name="fields[question${id}]" value="1"><span class="choices-text">1</span></label>
+            <label><input type="radio" name="fields[question${id}]" value="2"><span class="choices-text">2</span></label>
+        </div></li></ul></form></div>`;
+    const h = harness(html);
+    const read = await h.message({ action: 'readExercise' });
+    assert.equal(read.ok, true, read.message);
+    assert.equal(read.exercise.questions.length, 1);
+    assert.equal(read.exercise.questions[0].id, id);
+    assert.equal(read.exercise.questions[0].kind, 'single_choice');
+    assert.equal(read.exercise.questions[0].choices.length, 2);
+    assert.equal(read.exercise.questions[0].choices[0].id, '1');
+    assert.equal(read.exercise.questions[0].choices[0].text, '1');
+    assert.equal(read.exercise.questions[0].choices[1].id, '2');
+    assert.equal(read.exercise.questions[0].choices[1].text, '2');
+    assert.equal(read.exercise.images[0].id, id);
+    assert.equal(read.exercise.images[0].url, 'https://static.k12online.vn/upload/2003644/fck/7900991288/image.png');
+    assert.match(read.exercise.questions[0].prompt, /1 \+ 1 bằng mấy/);
+});
+
 test('reads native 10 x 4 true/false statements and K12 image without session fields', async () => {
     const h = harness(trueFalseFixture());
     const read = await h.message({ action: 'readExercise' });

@@ -63,7 +63,7 @@ Object.assign(elements, Object.fromEntries([
     'ai-status', 'ai-answers', 'api-record-toggle', 'api-export', 'discover-all', 'ai-selected', 'ai-submit-toggle', 'ai-read', 'ai-export-exercise', 'ai-export-result',
     'ai-login', 'ai-email', 'ai-send-code', 'ai-code-step', 'ai-code', 'ai-verify-code',
     'ai-account', 'ai-account-email', 'ai-quota', 'ai-logout', 'ai-auth-status', 'skip-completed',
-    'auth-gate', 'app-tabs', 'app-main'
+    'auth-gate', 'app-tabs', 'app-main', 'verify-comments', 'verify-result'
 ].map(id => [id.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), document.getElementById(id)])));
 
 async function init() {
@@ -85,6 +85,7 @@ async function init() {
     elements.aiSelected.addEventListener('click', solveSelectedExercises);
     elements.previewSelected.addEventListener('click', previewSelectedWorkflow);
     elements.workflowSelected.addEventListener('click', runSelectedWorkflow);
+    elements.verifyComments.addEventListener('click', verifyAllComments);
     elements.aiCurrent.addEventListener('click', solveCurrentExercise);
     elements.aiRead.addEventListener('click', inspectCurrentExercise);
     elements.aiExportExercise.addEventListener('click', exportReadExercise);
@@ -934,7 +935,10 @@ async function runSelectedWorkflow() {
                 if (!list?.ok) throw new Error(list?.message || 'Không tìm thấy nội dung bài học.');
                 const outcome = await K12Workflow.run(list.candidates, { ...rule, skipCompleted: state.skipCompleted }, {
                     prepare: item => chrome.runtime.sendMessage({ action: 'prepareCandidateExercise', candidate: item }),
-                    complete: item => sendToTab(sourceTabId, { action: 'completeLessonFromSidebar', candidate: { ...item, subject: candidate.subject } }),
+                    complete: (item, options) => sendToTab(sourceTabId, { action: 'completeLessonFromSidebar', candidate: { ...item, subject: candidate.subject }, options }),
+                    refreshLesson: item => sendToTab(sourceTabId, { action: 'refreshLessonProgress', candidate: item }),
+                    readContent: item => sendToTab(sourceTabId, { action: 'readLessonContent', candidate: { ...item, subject: candidate.subject } }),
+                    commentContent: (item, exercise, result) => sendToTab(sourceTabId, { action: 'commentLessonContent', candidate: { ...item, subject: candidate.subject }, exercise, result }),
                     solve: solveExercise,
                     submit: async (opened, result) => {
                         const sent = await sendToTab(opened.tabId, { action: 'submitExercise', exercise: opened.exercise, result });
@@ -954,6 +958,59 @@ async function runSelectedWorkflow() {
         elements.bulkStatus.textContent = `Đã xử lý ${succeeded}/${selected.length} bài học; xem từng thẻ để biết kết quả.`;
         elements.bulkStatus.className = succeeded === selected.length ? 'bulk-status success' : 'bulk-status error';
     } finally { state.processing = false; renderLessons(); }
+}
+
+// Scans every lesson (not just the selected ones) for the user's own comment.
+async function verifyAllComments() {
+    if (state.processing || state.aiBusy || !state.tabId) return;
+    const profile = readCommentProfileForm();
+    if (!profile.className.trim() || !profile.studentId.trim()) {
+        elements.verifyResult.textContent = 'Cần nhập Lớp và Mã số trong Quản lý trước khi kiểm tra.';
+        return;
+    }
+    const lessons = state.candidates.filter(c => {
+        const rule = subjectRule(c.subject || '');
+        return rule.view && (rule.comment || rule.materialComment);
+    });
+    if (!lessons.length) {
+        elements.verifyResult.textContent = 'Không có bài nào thuộc môn bật bình luận.';
+        return;
+    }
+    state.processing = true;
+    renderLessons();
+    elements.verifyComments.disabled = true;
+    const missing = [];
+    const errors = [];
+    let checked = 0;
+    let done = 0;
+    let next = 0;
+    elements.verifyResult.className = 'bulk-status';
+    async function worker() {
+        while (next < lessons.length) {
+            const candidate = lessons[next++];
+            const rule = subjectRule(candidate.subject || '');
+            const wanted = { exercise: ['comment', 'both'].includes(rule.exerciseMode), material: Boolean(rule.materialComment || rule.comment) };
+            try {
+                const outcome = await sendToTab(state.tabId, { action: 'verifyLessonComments', candidate, profile, wanted });
+                if (!outcome?.ok) throw new Error(outcome?.message || 'Không đọc được bài.');
+                for (const item of outcome.items) {
+                    if (item.found === true) checked++;
+                    else if (item.found === false) { checked++; missing.push(`${candidate.title} › ${item.title}`); }
+                    else errors.push(`${candidate.title} › ${item.title}: ${item.message}`);
+                }
+            } catch (error) { errors.push(`${candidate.title}: ${error.message}`); }
+            elements.verifyResult.textContent = `Đã kiểm tra ${++done}/${lessons.length} bài...`;
+        }
+    }
+    try {
+        await Promise.all(Array.from({ length: Math.min(6, lessons.length) }, worker));
+    } finally { state.processing = false; elements.verifyComments.disabled = false; renderLessons(); }
+    const lines = [`Đã kiểm tra ${checked} nội dung của ${lessons.length} bài.`];
+    lines.push(missing.length ? `Chưa thấy bình luận (${missing.length}):\n${missing.join('\n')}` : 'Không thiếu bình luận nào.');
+    if (errors.length) lines.push(`Không kiểm tra được (${errors.length}):\n${errors.join('\n')}`);
+    elements.verifyResult.className = missing.length || errors.length ? 'bulk-status error' : 'bulk-status success';
+    elements.verifyResult.style.whiteSpace = 'pre-line';
+    elements.verifyResult.textContent = lines.join('\n');
 }
 
 async function exportApiCapture() {

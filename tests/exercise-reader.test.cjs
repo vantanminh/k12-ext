@@ -163,11 +163,10 @@ test('does not claim completion from SUCCESS alone or repeat a rejected write', 
     assert.equal(h.requests.length, 1);
     assert.match(result.message, /Không tìm thấy/);
 });
-test('blocks changed questions, invalid choices, and uncertain answers before any POST', async () => {
+test('blocks changed questions and invalid choices before any POST', async () => {
     const h = harness();
     const read = await h.message({ action: 'readExercise' });
-    let result = await h.message({ action: 'submitExercise', exercise: read.exercise, result: answers(read.exercise, 0.2) });
-    assert.equal(result.ok, false);
+    let result;
     const invalid = answers(read.exercise); invalid.answers[0].choice_ids = ['999'];
     result = await h.message({ action: 'submitExercise', exercise: read.exercise, result: invalid });
     assert.equal(result.ok, false);
@@ -175,6 +174,15 @@ test('blocks changed questions, invalid choices, and uncertain answers before an
     result = await h.message({ action: 'submitExercise', exercise: changed, result: answers(changed) });
     assert.equal(result.ok, false);
     assert.equal(h.requests.length, 0);
+});
+test('uncertain answers are still submitted and named in the result', async () => {
+    const page = '<html><body><span class="coursewarePercent6ab7e04a1d5332cbc90330ba">100</span></body></html>';
+    const h = harness(fixture, [{ ok: true, json: async () => ({ status: 'SUCCESS' }) }, { ok: true, url: 'https://hcm.k12online.vn/', text: async () => page }]);
+    const read = await h.message({ action: 'readExercise' });
+    const result = await h.message({ action: 'submitExercise', exercise: read.exercise, result: answers(read.exercise, 0.2) });
+    assert.equal(result.ok, true, result.message);
+    assert.equal(h.requests.length, 2);
+    assert.match(result.message, /chưa chắc chắn: Câu 1/);
 });
 test('missing progress verification remains submitted but incomplete', async () => {
     const h = harness(fixture, [

@@ -3,16 +3,23 @@
     const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
     const locked = opened => opened?.prerequisiteRequired || /chưa mở biểu mẫu/i.test(opened?.message || '');
     const complete = item => /^100\s*%?$/.test(String(item.progress || '').trim());
+    // Text and file lessons often hold questions whose answers go in a comment.
+    const answerable = (type, rule, api) => ['Courseware.Content', 'Courseware.PDF'].includes(type)
+        && (rule.comment || rule.materialComment) && typeof api.readContent === 'function';
     async function run(items, rule, api) {
         const records = [];
         const materials = [];
         // K12 sometimes updates progress late, so a locked exercise gets its
         // preceding materials re-marked once before retrying.
+        // K12 also caches the lesson's sequential lock until the lesson is
+        // relaunched (like leaving to the home page and reopening it).
         async function unlock(item) {
-            if (!rule.view) return false;
-            const before = materials.filter(material => items.indexOf(material) < items.indexOf(item));
-            if (!before.length) return false;
+            const refreshed = typeof api.refreshLesson === 'function'
+                && (await api.refreshLesson(item).catch(() => null))?.ok === true;
+            const before = rule.view ? materials.filter(material => items.indexOf(material) < items.indexOf(item)) : [];
             for (const material of before) await api.complete(material).catch(() => null);
+            if (before.length && typeof api.refreshLesson === 'function') await api.refreshLesson(item).catch(() => null);
+            if (!refreshed && !before.length) return false;
             await pause(3000);
             return true;
         }
@@ -21,7 +28,7 @@
             let submitted = false;
             try {
                 let type = item.coursewareType;
-                if (rule.skipCompleted && complete(item)) {
+                if (rule.skipCompleted && complete(item) && !(rule.view && answerable(type, rule, api))) {
                     if (materialTypes.has(type)) materials.push(item);
                     records.push({ item, skipped: true, completed: true, message: 'Đã 100%, bỏ qua.' });
                     continue;
@@ -50,6 +57,26 @@
                         records.push({ item, skipped: true, completed: complete(item), message: 'Bỏ qua tài liệu/video theo cấu hình môn.' });
                         continue;
                     }
+                    if (answerable(type, rule, api)) {
+                        const read = await api.readContent(item);
+                        if (!read?.ok) throw Error(read?.message || 'Không đọc được nội dung bài học.');
+                        if (read.answered) {
+                            records.push({ item, skipped: true, completed: complete(item), commented: true, message: 'Đã gửi bình luận đáp án trước đó, bỏ qua.' });
+                            continue;
+                        }
+                        const result = read.exercise ? await api.solve(read.exercise) : null;
+                        const answer = result ? globalThis.K12AI.contentAnswer(read.exercise, result) : '';
+                        if (answer) {
+                            if (!complete(item)) {
+                                const done = await api.complete(item, { skipComment: true });
+                                if (!done?.ok || !done.completed) throw Error(done?.message || 'Chưa xác minh được tiến độ tài liệu.');
+                            }
+                            const comment = await api.commentContent(item, read.exercise, result);
+                            if (!comment?.ok || !comment.commented) throw Error(comment?.message || 'Bình luận đáp án chưa được gửi.');
+                            records.push({ item, completed: true, commented: true, message: 'Đã làm bài bằng AI và gửi bình luận đáp án.' });
+                            continue;
+                        }
+                    }
                     if (complete(item) && !rule.materialComment) {
                         records.push({ item, skipped: true, completed: true, message: 'K12 đã ghi nhận 100%.' });
                         continue;
@@ -71,6 +98,8 @@
                     submitted = sent?.submitted === true;
                     if (!sent?.ok || !sent.completed) throw Error(sent?.message || 'K12 chưa xác nhận bài hoàn thành.');
                     completed = true;
+                    // Relaunch so the next item is not blocked by K12's stale progress.
+                    if (typeof api.refreshLesson === 'function') await api.refreshLesson(item).catch(() => null);
                 }
                 let commented = false;
                 if (['comment', 'both'].includes(rule.exerciseMode)) {

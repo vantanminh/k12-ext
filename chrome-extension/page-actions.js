@@ -8,7 +8,7 @@
         const invocation = `VHV.App.modules[${index}].doExercise()`;
         const control = Array.from(document.querySelectorAll('a[href], [onclick]')).find(element =>
             ((element.getAttribute('href') || '') + (element.getAttribute('onclick') || '')).includes(invocation));
-        if (!control || document.querySelector('.doExercise-pdf form, form li[data-element-type="OnlyTrueFalseNew"]')) return;
+        if (!control || document.querySelector('.doExercise-pdf form, form li[data-element-type="OnlyTrueFalseNew"], form li[data-element-type="Choice"]')) return;
         const module = window.VHV?.App?.modules?.[index];
         if (typeof module?.doExercise === 'function') module.doExercise();
     });

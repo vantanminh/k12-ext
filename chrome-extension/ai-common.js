@@ -55,6 +55,9 @@
         return url.href;
     }
 
+    // Mirrors validate_answers on the server: an undecidable question comes back empty with confidence 0.
+    const unanswered = answer => !answer.choice_ids.length && answer.confidence === 0;
+
     function validateAnswers(exercise, result) {
         if (!result || !Array.isArray(result.answers) || result.answers.length !== exercise.questions.length) {
             throw new Error('AI chưa trả lời đủ câu hỏi.');
@@ -66,14 +69,25 @@
                 || new Set(answer.choice_ids).size !== answer.choice_ids.length
                 || answer.choice_ids.some(id => !q.choices.some(c => c.id === id))
                 || !Number.isFinite(answer.confidence) || answer.confidence < 0 || answer.confidence > 1
-                || (q.kind === 'single_choice' && answer.choice_ids.length !== 1)
-                || (q.kind === 'multiple_choice' && !answer.choice_ids.length)
+                || (q.kind === 'single_choice' && answer.choice_ids.length !== 1 && !unanswered(answer))
+                || (q.kind === 'multiple_choice' && !answer.choice_ids.length && !unanswered(answer))
                 || (q.kind === 'short_text' && (answer.choice_ids.length || !String(answer.text || '').trim()))) {
                 throw new Error('AI trả về mã câu hỏi hoặc đáp án không hợp lệ.');
             }
             seen.add(q.id);
         }
         return result;
+    }
+
+    // Names the low-confidence answers so the user knows which questions to check.
+    function uncertainSummary(exercise, result) {
+        return exercise.questions.map((q, index) => {
+            const answer = result.answers.find(a => a.question_id === q.id);
+            if (!answer || answer.confidence >= 0.7) return '';
+            const label = q.prompt.match(/^Câu [^.]+/)?.[0] || `Câu ${index + 1}`;
+            const reason = String(answer.explanation || '').trim().slice(0, 160);
+            return `${label} (tin cậy ${Math.round(answer.confidence * 100)}%${reason ? `: ${reason}` : ''})`;
+        }).filter(Boolean).join('; ');
     }
 
     function formatAnswerSummary(exercise, result) {
@@ -96,6 +110,44 @@
             } else lines.push(`Câu ${index + 1}: ${value}`);
         }
         return lines.map(line => line.replace(/,$/, '')).join('; ');
+    }
+
+    const NO_QUESTIONS = 'KHÔNG CÓ CÂU HỎI';
+    const CONTENT_QUESTION_ID = 'content';
+
+    function contentHasQuestions(text) {
+        return /(^|\n)\s*Câu\s*\d+|(Anh|Em)\s*\/?\s*(chị\s*)?hãy|hãy\s+(viết|trả lời|nêu|phân tích|chỉ ra)|trả lời|điền\s+(từ|vào)|viết\s+(một\s+)?(đoạn|bài)\s+văn/i
+            .test(String(text || ''));
+    }
+
+    // A text or file lesson becomes one short_text question; the AI answers every
+    // question in it as one comment, so the server needs no new request shape.
+    function contentExercise({ title, text, pdfUrl: pdf }) {
+        const body = String(text || '').trim();
+        const prompt = [
+            'Đây là một bài học dạng văn bản/file trên K12. Học sinh phải làm toàn bộ câu hỏi và yêu cầu trong bài rồi gửi đáp án trong phần bình luận.',
+            'Hãy làm toàn bộ bài và ghi đáp án vào trường text:',
+            '- Trả lời theo đúng thứ tự, mỗi câu một dòng bắt đầu bằng "Câu N:" (giữ ý a, b nếu có). Không chép lại đề.',
+            '- Câu trắc nghiệm: ghi chữ cái đáp án đúng (nếu có) và nội dung lựa chọn.',
+            '- Câu điền khuyết: ghi (1) ..., (2) ... theo thứ tự chỗ trống.',
+            '- Câu tự luận, viết đoạn văn hoặc bài văn: viết hoàn chỉnh, đúng độ dài đề yêu cầu.',
+            `- Nếu bài không có câu hỏi hay yêu cầu nào cần trả lời, ghi đúng: ${NO_QUESTIONS}`,
+            pdf ? 'Nội dung bài nằm trong file PDF đính kèm.' : '',
+            body ? `Nội dung bài:\n${body}` : ''
+        ].filter(Boolean).join('\n');
+        // UTF-8 byte length, matching the server's 20000-byte prompt limit.
+        if (encodeURIComponent(prompt).replace(/%[0-9A-F]{2}/g, '_').length > 20000) throw new Error('Nội dung bài quá dài để gửi AI.');
+        const exercise = { title, questions: [{ id: CONTENT_QUESTION_ID, kind: 'short_text', prompt, choices: [] }] };
+        if (pdf) exercise.pdf_url = pdf;
+        return validateExercise(exercise);
+    }
+
+    function contentAnswer(exercise, result) {
+        validateAnswers(exercise, result);
+        const answer = result.answers[0];
+        if (answer.confidence < 0.7) throw new Error('AI chưa chắc chắn đáp án; cần xem lại trước khi bình luận.');
+        const text = String(answer.text || '').trim();
+        return text.toUpperCase().includes(NO_QUESTIONS) && text.length < 40 ? '' : text;
     }
 
     function serverUrl(value) {
@@ -172,6 +224,15 @@
             }
             if (['Courseware.PDF', 'Courseware.Video', 'Courseware.Content'].includes(coursewareType)) {
                 const label = coursewareType === 'Courseware.Video' ? 'video' : 'tài liệu';
+                const answers = rule.view && coursewareType !== 'Courseware.Video' && (rule.comment || rule.materialComment);
+                if (answers) {
+                    return {
+                        item, coursewareType, completed,
+                        action: 'Đọc bài; nếu có câu hỏi thì gọi AI làm bài và bình luận đáp án, nếu không thì đánh dấu đã xem',
+                        requiresCommentProfile: !hasCommentProfile,
+                        writesToK12: true
+                    };
+                }
                 const shouldSkip = !rule.view || (completed && !rule.materialComment);
                 return {
                     item, coursewareType, completed,
@@ -207,5 +268,5 @@
         return entry && (/^\/api\/LMS\//.test(entry.path)
             || (/^\/\d+\/$/.test(entry.path) && /^LMS\./.test(String(entry.request?.service || ''))));
     }
-    globalThis.K12AI = { plainText, validateExercise, validateAnswers, formatAnswerSummary, serverUrl, normalizeEmail, authHeaders, isFreeLessonListUrl, pdfUrl, imageUrl, subjectRule, workflowPreview, redact, recordableApiEntry };
+    globalThis.K12AI = { plainText, validateExercise, validateAnswers, uncertainSummary, formatAnswerSummary, contentHasQuestions, contentExercise, contentAnswer, serverUrl, normalizeEmail, authHeaders, isFreeLessonListUrl, pdfUrl, imageUrl, subjectRule, workflowPreview, redact, recordableApiEntry };
 })();

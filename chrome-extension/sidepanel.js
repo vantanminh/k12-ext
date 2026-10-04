@@ -936,6 +936,7 @@ async function runSelectedWorkflow() {
                 const outcome = await K12Workflow.run(list.candidates, { ...rule, skipCompleted: state.skipCompleted }, {
                     prepare: item => chrome.runtime.sendMessage({ action: 'prepareCandidateExercise', candidate: item }),
                     complete: (item, options) => sendToTab(sourceTabId, { action: 'completeLessonFromSidebar', candidate: { ...item, subject: candidate.subject }, options }),
+                    refreshLesson: item => sendToTab(sourceTabId, { action: 'refreshLessonProgress', candidate: item }),
                     readContent: item => sendToTab(sourceTabId, { action: 'readLessonContent', candidate: { ...item, subject: candidate.subject } }),
                     commentContent: (item, exercise, result) => sendToTab(sourceTabId, { action: 'commentLessonContent', candidate: { ...item, subject: candidate.subject }, exercise, result }),
                     solve: solveExercise,

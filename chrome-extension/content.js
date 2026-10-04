@@ -1475,6 +1475,12 @@
                 return true;
             }
 
+            if (message.action === 'refreshLessonProgress') {
+                // Lesson/learn relaunches the lesson, which makes K12 recompute progress and unlocks.
+                resolveLessonPageUrl(message.candidate).then(sendResponse, error => sendResponse({ ok: false, message: error.message }));
+                return true;
+            }
+
             if (message.action === 'completeLessonFromSidebar') {
                 completeLessonFromSidebar(message.candidate, message.options).then(sendResponse);
                 return true;

@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const scope = {};
+const scope = { setTimeout: (fn) => setTimeout(fn, 0) };
 vm.createContext(scope);
 for (const file of ['ai-common', 'lesson-workflow']) vm.runInContext(fs.readFileSync(`chrome-extension/${file}.js`, 'utf8'), scope);
 const exercise = { coursewareId: 'exercise', coursewareType: 'Courseware.Exercise', progress: '0%', title: 'Bài tập' };
@@ -104,4 +104,14 @@ test('content exercise keeps the lesson text as one short answer question', () =
     assert.equal(scope.K12AI.contentHasQuestions('Câu 1. Điền từ'), true);
     assert.equal(scope.K12AI.contentHasQuestions('Tiểu thuyết là thể loại tự sự cỡ lớn.'), false);
     assert.throws(() => scope.K12AI.contentExercise({ title: 'x', text: 'Câu 1. ' + 'ă'.repeat(12000) }), /quá dài/);
+});
+
+test('stale K12 lock relaunches the lesson and retries the exercise once', async () => {
+    const h = harness();
+    let opens = 0;
+    h.api.prepare = async () => { h.calls.push('prepare'); return ++opens === 1 ? { ok: false, prerequisiteRequired: true, message: 'locked' } : { ok: true, tabId: 7, exercise: { questions: [] } }; };
+    h.api.refreshLesson = async () => { h.calls.push('refresh'); return { ok: true }; };
+    const result = await scope.K12Workflow.run([exercise], scope.K12AI.subjectRule({ exerciseMode: 'submit' }), h.api);
+    assert.equal(result.ok, true);
+    assert.deepEqual(h.calls, ['prepare', 'refresh', 'prepare', 'solve', 'submit', 'refresh', 'release']);
 });

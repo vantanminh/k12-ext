@@ -55,6 +55,9 @@
         return url.href;
     }
 
+    // Mirrors validate_answers on the server: an undecidable question comes back empty with confidence 0.
+    const unanswered = answer => !answer.choice_ids.length && answer.confidence === 0;
+
     function validateAnswers(exercise, result) {
         if (!result || !Array.isArray(result.answers) || result.answers.length !== exercise.questions.length) {
             throw new Error('AI chưa trả lời đủ câu hỏi.');
@@ -66,14 +69,25 @@
                 || new Set(answer.choice_ids).size !== answer.choice_ids.length
                 || answer.choice_ids.some(id => !q.choices.some(c => c.id === id))
                 || !Number.isFinite(answer.confidence) || answer.confidence < 0 || answer.confidence > 1
-                || (q.kind === 'single_choice' && answer.choice_ids.length !== 1)
-                || (q.kind === 'multiple_choice' && !answer.choice_ids.length)
+                || (q.kind === 'single_choice' && answer.choice_ids.length !== 1 && !unanswered(answer))
+                || (q.kind === 'multiple_choice' && !answer.choice_ids.length && !unanswered(answer))
                 || (q.kind === 'short_text' && (answer.choice_ids.length || !String(answer.text || '').trim()))) {
                 throw new Error('AI trả về mã câu hỏi hoặc đáp án không hợp lệ.');
             }
             seen.add(q.id);
         }
         return result;
+    }
+
+    // Names the low-confidence answers so the user knows which questions to check.
+    function uncertainSummary(exercise, result) {
+        return exercise.questions.map((q, index) => {
+            const answer = result.answers.find(a => a.question_id === q.id);
+            if (!answer || answer.confidence >= 0.7) return '';
+            const label = q.prompt.match(/^Câu [^.]+/)?.[0] || `Câu ${index + 1}`;
+            const reason = String(answer.explanation || '').trim().slice(0, 160);
+            return `${label} (tin cậy ${Math.round(answer.confidence * 100)}%${reason ? `: ${reason}` : ''})`;
+        }).filter(Boolean).join('; ');
     }
 
     function formatAnswerSummary(exercise, result) {
@@ -254,5 +268,5 @@
         return entry && (/^\/api\/LMS\//.test(entry.path)
             || (/^\/\d+\/$/.test(entry.path) && /^LMS\./.test(String(entry.request?.service || ''))));
     }
-    globalThis.K12AI = { plainText, validateExercise, validateAnswers, formatAnswerSummary, contentHasQuestions, contentExercise, contentAnswer, serverUrl, normalizeEmail, authHeaders, isFreeLessonListUrl, pdfUrl, imageUrl, subjectRule, workflowPreview, redact, recordableApiEntry };
+    globalThis.K12AI = { plainText, validateExercise, validateAnswers, uncertainSummary, formatAnswerSummary, contentHasQuestions, contentExercise, contentAnswer, serverUrl, normalizeEmail, authHeaders, isFreeLessonListUrl, pdfUrl, imageUrl, subjectRule, workflowPreview, redact, recordableApiEntry };
 })();

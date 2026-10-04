@@ -11,11 +11,15 @@
         const materials = [];
         // K12 sometimes updates progress late, so a locked exercise gets its
         // preceding materials re-marked once before retrying.
+        // K12 also caches the lesson's sequential lock until the lesson is
+        // relaunched (like leaving to the home page and reopening it).
         async function unlock(item) {
-            if (!rule.view) return false;
-            const before = materials.filter(material => items.indexOf(material) < items.indexOf(item));
-            if (!before.length) return false;
+            const refreshed = typeof api.refreshLesson === 'function'
+                && (await api.refreshLesson(item).catch(() => null))?.ok === true;
+            const before = rule.view ? materials.filter(material => items.indexOf(material) < items.indexOf(item)) : [];
             for (const material of before) await api.complete(material).catch(() => null);
+            if (before.length && typeof api.refreshLesson === 'function') await api.refreshLesson(item).catch(() => null);
+            if (!refreshed && !before.length) return false;
             await pause(3000);
             return true;
         }
@@ -94,6 +98,8 @@
                     submitted = sent?.submitted === true;
                     if (!sent?.ok || !sent.completed) throw Error(sent?.message || 'K12 chưa xác nhận bài hoàn thành.');
                     completed = true;
+                    // Relaunch so the next item is not blocked by K12's stale progress.
+                    if (typeof api.refreshLesson === 'function') await api.refreshLesson(item).catch(() => null);
                 }
                 let commented = false;
                 if (['comment', 'both'].includes(rule.exerciseMode)) {
